@@ -219,9 +219,10 @@ function handleRoomFile(input) {
     const reader = new FileReader();
     reader.onload = () => {
       const buffer = reader.result; const total = Math.ceil(buffer.byteLength / FILE_CHUNK_SIZE);
+      const fileId = fileTransferId();
       for (let i = 0; i < total; i++) {
         const chunk = buffer.slice(i * FILE_CHUNK_SIZE, (i + 1) * FILE_CHUNK_SIZE);
-        const chunkData = { type: "file-chunk", fileId: fileTransferId(), name: file.name, mime: file.type || "application/octet-stream", index: i, totalChunks: total, chunk, sender: peer?.id || "" };
+        const chunkData = { type: "file-chunk", fileId, name: file.name, mime: file.type || "application/octet-stream", index: i, totalChunks: total, chunk, sender: peer?.id || "" };
         broadcast(chunkData);
       }
     };
