@@ -11,14 +11,24 @@
   <main class="app">
     <h1 class="title">Call</h1>
 
-    <div class="videos">
+    <div id="videoStage" class="videos">
       <video id="remoteVideo" class="remote" autoplay playsinline></video>
       <video id="localVideo" class="local" autoplay playsinline muted></video>
+      <div id="audioOnlyNotice" class="audio-placeholder hidden" aria-live="polite">
+        <span class="audio-icon" aria-hidden="true">🎧</span>
+        <span>Audio-only mode</span>
+      </div>
     </div>
 
     <p id="status" class="status">Connecting…</p>
 
     <div class="panel">
+      <div class="row controls">
+        <button id="modeToggleBtn" class="btn" type="button">Use Audio-Only</button>
+        <button id="outputToggleBtn" class="btn hidden" type="button">Output: Speaker</button>
+        <button id="switchCameraBtn" class="btn" type="button">Switch Camera</button>
+      </div>
+
       <div class="row">
         <span class="label">Your ID</span>
         <code id="myId" class="id">—</code>
