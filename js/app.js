@@ -1,683 +1,148 @@
-// Browser-based calling app (WebRTC via PeerJS — no backend required).
-// GitHub Pages serves this statically; PeerJS provides the free public
-// signaling broker so two browsers can connect peer-to-peer.
+/* Static PeerJS calling app. Room membership is coordinated by the creator's
+   temporary PeerJS ID; media and messages still travel peer-to-peer. */
+const $ = (id) => document.getElementById(id);
+const statusEl = $("status"), myIdEl = $("myId");
+let peer, localStream = null, privateCall = null, pendingPrivate = null;
+let privateConnection = null, room = null, pendingGroupCalls = [], groupCalls = new Map();
 
-const myIdEl = document.getElementById("myId");
-const peerIdInput = document.getElementById("peerId");
-const statusEl = document.getElementById("status");
-const videoStage = document.getElementById("videoStage");
-const localVideo = document.getElementById("localVideo");
-const remoteVideo = document.getElementById("remoteVideo");
-const audioOnlyNotice = document.getElementById("audioOnlyNotice");
-const copyBtn = document.getElementById("copyBtn");
-const callBtn = document.getElementById("callBtn");
-const answerBtn = document.getElementById("answerBtn");
-const hangupBtn = document.getElementById("hangupBtn");
-const modeToggleBtn = document.getElementById("modeToggleBtn");
-const outputToggleBtn = document.getElementById("outputToggleBtn");
-const switchCameraBtn = document.getElementById("switchCameraBtn");
-const incomingRow = document.getElementById("incoming");
-const chatStatusEl = document.getElementById("chatStatus");
-const chatMessagesEl = document.getElementById("chatMessages");
-const chatEmptyEl = document.getElementById("chatEmpty");
-const chatForm = document.getElementById("chatForm");
-const messageInput = document.getElementById("messageInput");
-const clearChatBtn = document.getElementById("clearChatBtn");
+function status(text) { statusEl.textContent = text; }
+function show(id) { $(id).classList.remove("hidden"); }
+function hide(id) { $(id).classList.add("hidden"); }
+function view(name) { ["homeView", "friendView", "roomView"].forEach((id) => $(id).classList.toggle("hidden", id !== name)); }
+function safeText(value) { return typeof value === "string" ? value.trim().slice(0, 1000) : ""; }
+function stopMedia() { if (localStream) localStream.getTracks().forEach((track) => track.stop()); localStream = null; }
 
-let peer = null;
-let localStream = null;
-let currentCall = null;
-let pendingCall = null;
-let isAudioOnly = false;
-let outputMode = "speaker";
-let facingMode = "user";
-let currentVideoDeviceId = null;
-let outgoingAudioSender = null;
-let outgoingVideoSender = null;
-let chatConnection = null;
-let chatConnectingPeer = null;
-let queuedMessages = [];
-
-function setStatus(text) {
-  statusEl.textContent = text;
-}
-
-function modeName() {
-  return isAudioOnly ? "Audio-only" : "Video";
-}
-
-function outputModeName() {
-  return outputMode === "speaker" ? "Speaker" : "Earpiece";
-}
-
-function updateControls() {
-  videoStage.classList.toggle("audio-only", isAudioOnly);
-  audioOnlyNotice.classList.toggle("hidden", !isAudioOnly);
-  modeToggleBtn.textContent = isAudioOnly ? "Use Video" : "Use Audio-Only";
-  outputToggleBtn.textContent = "Output: " + outputModeName();
-  outputToggleBtn.classList.toggle("hidden", !isAudioOnly);
-  switchCameraBtn.classList.toggle("hidden", isAudioOnly);
-}
-
-function setControlsBusy(isBusy) {
-  modeToggleBtn.disabled = isBusy;
-  outputToggleBtn.disabled = isBusy;
-  switchCameraBtn.disabled = isBusy;
-}
-
-function getVideoConstraints() {
-  if (currentVideoDeviceId) {
-    return { deviceId: { exact: currentVideoDeviceId } };
-  }
-
-  return { facingMode: { ideal: facingMode } };
-}
-
-function stopStream(stream) {
-  if (!stream) return;
-  stream.getTracks().forEach((track) => track.stop());
-}
-
-function updateLocalPreview() {
-  localVideo.srcObject = isAudioOnly ? null : localStream;
-}
-
-function getPeerConnection() {
-  return currentCall && currentCall.peerConnection ? currentCall.peerConnection : null;
-}
-
-function cacheOutgoingSenders() {
-  const connection = getPeerConnection();
-  if (!connection || typeof connection.getSenders !== "function") return;
-
-  connection.getSenders().forEach((sender) => {
-    if (!sender.track) return;
-    if (sender.track.kind === "audio") outgoingAudioSender = sender;
-    if (sender.track.kind === "video") outgoingVideoSender = sender;
-  });
-}
-
-async function replaceOutgoingTracks(stream) {
-  cacheOutgoingSenders();
-
-  const audioTrack = stream.getAudioTracks()[0] || null;
-  const videoTrack = stream.getVideoTracks()[0] || null;
-  const replacements = [];
-
-  if (outgoingAudioSender && audioTrack) {
-    replacements.push(outgoingAudioSender.replaceTrack(audioTrack));
-  }
-
-  if (outgoingVideoSender) {
-    replacements.push(outgoingVideoSender.replaceTrack(videoTrack));
-  }
-
-  await Promise.all(replacements);
-
-  if (!outgoingVideoSender && videoTrack && currentCall) {
-    setStatus("Video will apply on the next call.");
-  }
-}
-
-// Get the user's microphone, plus camera when video mode is active.
-async function refreshLocalMedia() {
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    setStatus("This browser does not support camera/microphone access.");
-    return false;
-  }
-
-  const constraints = {
-    audio: true,
-    video: isAudioOnly ? false : getVideoConstraints(),
-  };
-  const previousStream = localStream;
-
+// Deliberately called only from Call/Answer buttons: opening the site never asks for media.
+async function getMedia(video) {
+  if (localStream && (!video || localStream.getVideoTracks().length)) return localStream;
+  if (!navigator.mediaDevices?.getUserMedia) { status("Camera/microphone access is unsupported in this browser."); return null; }
   try {
-    const nextStream = await navigator.mediaDevices.getUserMedia(constraints);
-    localStream = nextStream;
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: video ? { facingMode: { ideal: "user" } } : false });
+    if (localStream) stopMedia();
+    localStream = stream;
+    return stream;
+  } catch (error) { console.error(error); status("Microphone/camera permission was denied or is unavailable."); return null; }
+}
+function addMessage(containerId, text, mine, sender = "") {
+  const container = $(containerId), empty = container.querySelector(".empty"); if (empty) empty.remove();
+  const item = document.createElement("article"); item.className = "message " + (mine ? "mine" : "theirs");
+  const body = document.createElement("div"); body.textContent = safeText(text); item.append(body);
+  const meta = document.createElement("small"); meta.textContent = sender || new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); item.append(meta);
+  container.append(item); container.scrollTop = container.scrollHeight;
+}
+function clearMessages(id) { $(id).replaceChildren(Object.assign(document.createElement("p"), { className: "empty", textContent: "No messages yet" })); }
+function copyText(text, button) { navigator.clipboard?.writeText(text).then(() => { const old = button.textContent; button.textContent = "Copied"; setTimeout(() => { button.textContent = old; }, 1000); }).catch(() => status("Could not copy to clipboard.")); }
 
-    const videoTrack = nextStream.getVideoTracks()[0];
-    const videoSettings = videoTrack && videoTrack.getSettings ? videoTrack.getSettings() : null;
-    if (videoSettings && videoSettings.deviceId) {
-      currentVideoDeviceId = videoSettings.deviceId;
-    }
+function wirePrivateConnection(connection) {
+  connection.on("open", () => { privateConnection = connection; $("privateChatStatus").textContent = "Connected to " + connection.peer; });
+  connection.on("data", (data) => { if (data?.type === "private-chat") addMessage("privateMessages", data.text, false); });
+  connection.on("close", () => { if (privateConnection === connection) { privateConnection = null; $("privateChatStatus").textContent = "Chat disconnected."; } });
+  connection.on("error", () => { $("privateChatStatus").textContent = "Could not connect to chat."; });
+}
+function privateChatConnection(remoteId) {
+  if (!peer?.open || !remoteId || remoteId === peer.id) return null;
+  if (privateConnection?.open && privateConnection.peer === remoteId) return privateConnection;
+  if (privateConnection) privateConnection.close();
+  privateConnection = peer.connect(remoteId, { reliable: true, serialization: "json" }); wirePrivateConnection(privateConnection); return privateConnection;
+}
+function endPrivateCall() { const call = privateCall; privateCall = null; if (call) call.close(); $("privateTiles").replaceChildren(); if (!groupCalls.size) stopMedia(); hide("privateHangupBtn"); show("callBtn"); show("audioCallBtn"); status("Private call ended."); }
+function wirePrivateCall(call) {
+  privateCall = call; hide("callBtn"); hide("audioCallBtn"); show("privateHangupBtn");
+  call.on("stream", (stream) => addPrivateTile(call.peer, stream));
+  call.on("close", () => { $("privateTiles").replaceChildren(); if (privateCall === call) endPrivateCall(); });
+  call.on("error", () => endPrivateCall());
+}
+async function startPrivateCall(video = true) {
+  const remoteId = $("peerId").value.trim(); if (!remoteId) return status("Enter a friend's ID first."); if (remoteId === peer?.id) return status("You cannot call your own ID.");
+  const stream = await getMedia(video); if (!stream) return; if (video) addPrivateTile(peer.id, stream, true); privateChatConnection(remoteId); status("Calling " + remoteId + "…"); wirePrivateCall(peer.call(remoteId, stream, { metadata: { kind: "private", video } }));
+}
+async function answerPrivate() { if (!pendingPrivate) return; const stream = await getMedia(Boolean(pendingPrivate.metadata?.video !== false)); if (!stream) return; addPrivateTile(peer.id, stream, true); const call = pendingPrivate; pendingPrivate = null; hide("privateIncoming"); call.answer(stream); wirePrivateCall(call); }
 
-    updateLocalPreview();
-
-    if (currentCall) {
-      await replaceOutgoingTracks(nextStream);
-    }
-
-    if (previousStream && previousStream !== nextStream) {
-      stopStream(previousStream);
-    }
-
-    updateControls();
-    return true;
-  } catch (err) {
-    const deviceLabel = isAudioOnly ? "microphone" : "camera/microphone";
-    setStatus(deviceLabel.charAt(0).toUpperCase() + deviceLabel.slice(1) + " permission denied or unavailable.");
-    console.error(err);
-    return false;
+function randomCode() { const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; const values = crypto.getRandomValues(new Uint32Array(6)); return Array.from(values, (v) => chars[v % chars.length]).join(""); }
+function roomHostId(code) { return "call-room-" + code; }
+function memberIds() { return room?.creator ? [...room.members.keys()] : (room?.roster || []).filter((id) => id !== peer.id); }
+function allRoomIds() { return room?.creator ? [peer.id, ...room.members.keys()] : [peer.id, ...(room?.roster || []).filter((id) => id !== peer.id)]; }
+function sendHost(data) { if (room?.hostConnection?.open) room.hostConnection.send(data); }
+function broadcast(data) { if (!room?.creator) return; room.members.forEach((connection) => { if (connection.open) connection.send(data); }); }
+function updateRoomUI() { if (!room) return; $("roomCode").textContent = room.code; $("participantCount").textContent = allRoomIds().length + " participant" + (allRoomIds().length === 1 ? "" : "s") + " online"; }
+function announceRoster() { const roster = allRoomIds(); broadcast({ type: "roster", roster, active: room.callActive, video: room.video }); updateRoomUI(); }
+function roomMessage(text, sender) { addMessage("roomMessages", text, sender === peer.id, sender === peer.id ? "You" : "Participant"); }
+function handleRoomData(data, connection) {
+  if (!data || typeof data.type !== "string") return;
+  if (room?.creator) {
+    if (data.type === "join" && data.peerId === connection.peer) { room.members.set(connection.peer, connection); connection.send({ type: "welcome", code: room.code, roster: allRoomIds(), active: room.callActive, video: room.video }); announceRoster(); if (room.callActive && localStream) connectGroupPeers(); status("Room active — share the code."); }
+    if (data.type === "leave") { room.members.delete(connection.peer); announceRoster(); }
+    if (data.type === "room-chat") { const text = safeText(data.text); if (text) { broadcast({ type: "room-chat", text, sender: connection.peer }); roomMessage(text, connection.peer); } }
+    if (data.type === "start-call") { room.callActive = true; room.video = Boolean(data.video); broadcast({ type: "call-state", active: true, video: room.video, starter: connection.peer }); }
+    if (data.type === "end-call") endGroupCall(true);
+    return;
   }
+  if (data.type === "welcome" || data.type === "roster") { room.roster = data.roster || []; room.callActive = Boolean(data.active); room.video = Boolean(data.video); updateRoomUI(); if (room.callActive) offerGroupAnswer(); }
+  if (data.type === "room-chat") { const text = safeText(data.text); if (text) roomMessage(text, data.sender); }
+  if (data.type === "call-state") { room.callActive = Boolean(data.active); room.video = Boolean(data.video); if (room.callActive) offerGroupAnswer(); else finishGroupCall(false); }
+  if (data.type === "room-closed") { status("The room creator left; this room is closed."); leaveRoom(false); }
 }
-
-async function initMedia() {
-  const mediaReady = await refreshLocalMedia();
-
-  // If the camera is unavailable, fall back to audio-only so calls can still work.
-  if (!mediaReady && !isAudioOnly) {
-    isAudioOnly = true;
-    currentVideoDeviceId = null;
-    updateControls();
-    setStatus("Camera unavailable. Trying audio-only mode…");
-    await refreshLocalMedia();
-  }
+function wireHostConnection(connection) {
+  connection.on("data", (data) => handleRoomData(data, connection));
+  connection.on("close", () => { if (room?.creator) { room.members.delete(connection.peer); announceRoster(); } else if (room?.hostConnection === connection) { status("Room creator is offline; the room has closed."); leaveRoom(false); } });
 }
-
-function setChatStatus(text) {
-  chatStatusEl.textContent = text;
+function createRoom() {
+  if (!peer?.open) return status("Still connecting — please try again.");
+  const code = randomCode(), host = new Peer(roomHostId(code));
+  room = { code, creator: true, hostPeer: host, members: new Map(), roster: [peer.id], callActive: false, video: true };
+  host.on("open", () => { hide("roomLobby"); show("roomActive"); show("leaveRoomBtn"); updateRoomUI(); status("Room created. Share code " + code + "."); });
+  host.on("connection", (connection) => wireHostConnection(connection));
+  host.on("error", (error) => { console.error(error); status("Could not create room. Please try again."); leaveRoom(false); });
 }
-
-function formatMessageTime(timestamp) {
-  const date = new Date(timestamp);
-  if (Number.isNaN(date.getTime())) return "Now";
-  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+function joinRoom() {
+  const code = $("roomCodeInput").value.toUpperCase().replace(/[^A-Z0-9]/g, ""); if (!/^[A-Z0-9]{6}$/.test(code)) return status("Enter a valid 6-character room code."); if (!peer?.open) return status("Still connecting — please try again.");
+  room = { code, creator: false, hostConnection: peer.connect(roomHostId(code), { reliable: true, serialization: "json" }), roster: [], callActive: false, video: true };
+  room.hostConnection.on("open", () => { room.hostConnection.send({ type: "join", peerId: peer.id }); hide("roomLobby"); show("roomActive"); show("leaveRoomBtn"); status("Joining room " + code + "…"); });
+  room.hostConnection.on("error", () => { status("Room not found or creator is offline."); leaveRoom(false); }); wireHostConnection(room.hostConnection);
 }
-
-function addChatMessage(text, direction, timestamp = Date.now(), state = "") {
-  chatEmptyEl.classList.add("hidden");
-
-  const messageEl = document.createElement("article");
-  messageEl.className = "message " + direction;
-  if (state === "failed") messageEl.classList.add("failed");
-
-  const textEl = document.createElement("p");
-  textEl.className = "message-text";
-  textEl.textContent = text;
-
-  const metaEl = document.createElement("p");
-  metaEl.className = "message-meta";
-  metaEl.textContent = formatMessageTime(timestamp) + (state ? " · " + state : "");
-
-  messageEl.append(textEl, metaEl);
-  chatMessagesEl.appendChild(messageEl);
-  chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
-  return messageEl;
+function leaveRoom(changeView = true) {
+  if (!room) return; if (room.creator) { broadcast({ type: "room-closed" }); room.hostPeer?.destroy(); } else sendHost({ type: "leave" });
+  finishGroupCall(false); room.hostConnection?.close(); room = null; hide("roomActive"); hide("leaveRoomBtn"); show("roomLobby"); clearMessages("roomMessages"); if (changeView) { view("homeView"); status("You left the room."); }
 }
-
-function updateMessageState(messageEl, state) {
-  if (!messageEl) return;
-  messageEl.classList.toggle("failed", state === "Failed");
-  const metaEl = messageEl.querySelector(".message-meta");
-  if (!metaEl) return;
-  const time = metaEl.textContent.split(" · ")[0];
-  metaEl.textContent = time + (state ? " · " + state : "");
+function addPrivateTile(id, stream, local = false) {
+  const tileId = "private-" + id.replace(/[^a-z0-9_-]/gi, "_"); let tile = $(tileId);
+  if (!tile) { tile = document.createElement("div"); tile.id = tileId; tile.className = "tile"; const video = document.createElement("video"); video.autoplay = true; video.playsInline = true; video.muted = local; tile.append(video); const label = document.createElement("span"); label.textContent = local ? "You" : "Friend"; tile.append(label); $("privateTiles").append(tile); }
+  const video = tile.querySelector("video"); video.srcObject = stream; video.play().catch(() => {});
 }
+function addTile(id, stream, local) {
+  const tileId = "tile-" + id.replace(/[^a-z0-9_-]/gi, "_"); let tile = $(tileId); if (!tile) { tile = document.createElement("div"); tile.id = tileId; tile.className = "tile"; const video = document.createElement("video"); video.autoplay = true; video.playsInline = true; video.muted = local; tile.append(video); const label = document.createElement("span"); label.textContent = local ? "You" : "Participant"; tile.append(label); $("participantTiles").append(tile); } const video = tile.querySelector("video"); video.srcObject = stream; video.play().catch(() => {}); }
+function removeTile(id) { $("tile-" + id.replace(/[^a-z0-9_-]/gi, "_"))?.remove(); }
+function connectGroupPeers() { if (!room || !localStream) return; memberIds().forEach((id) => { if (id === peer.id || groupCalls.has(id)) return; const call = peer.call(id, localStream, { metadata: { kind: "group", room: room.code, video: room.video } }); wireGroupCall(call); }); }
+function wireGroupCall(call) { if (groupCalls.has(call.peer)) { call.close(); return; } groupCalls.set(call.peer, call); call.on("stream", (stream) => addTile(call.peer, stream, false)); call.on("close", () => { groupCalls.delete(call.peer); removeTile(call.peer); }); call.on("error", () => { groupCalls.delete(call.peer); removeTile(call.peer); }); }
+function offerGroupAnswer() { $("groupCallStatus").textContent = "A group " + (room.video ? "video" : "audio") + " call is active."; show("answerGroupBtn"); }
+async function startGroupCall(video) { if (!room) return; const stream = await getMedia(video); if (!stream) return; room.callActive = true; room.video = video; addTile(peer.id, stream, true); hide("startVideoBtn"); hide("startAudioBtn"); hide("answerGroupBtn"); show("endGroupBtn"); $("groupCallStatus").textContent = "Calling everyone in the room…"; if (room.creator) { broadcast({ type: "call-state", active: true, video, starter: peer.id }); } else sendHost({ type: "start-call", video }); connectGroupPeers(); }
+async function answerGroupCall() { if (!room?.callActive) return; const stream = await getMedia(room.video); if (!stream) return; addTile(peer.id, stream, true); hide("answerGroupBtn"); hide("startVideoBtn"); hide("startAudioBtn"); show("endGroupBtn"); $("groupCallStatus").textContent = "Connected to group call."; connectGroupPeers(); }
+function finishGroupCall(resetState = true) { groupCalls.forEach((call) => call.close()); groupCalls.clear(); $("participantTiles").replaceChildren(); if (!privateCall) stopMedia(); if (resetState && room) room.callActive = false; hide("endGroupBtn"); hide("answerGroupBtn"); show("startVideoBtn"); show("startAudioBtn"); $("groupCallStatus").textContent = "No group call is active."; }
+function endGroupCall(notify) { if (notify && room) { if (room.creator) { room.callActive = false; broadcast({ type: "call-state", active: false }); } else sendHost({ type: "end-call" }); } finishGroupCall(true); }
 
-function isChatOpen(connection = chatConnection) {
-  return Boolean(connection && connection.open);
-}
-
-function sendQueuedMessages(connection) {
-  const remaining = [];
-
-  queuedMessages.forEach((item) => {
-    if (item.peerId !== connection.peer) {
-      remaining.push(item);
-      return;
-    }
-
-    try {
-      connection.send(item.payload);
-      updateMessageState(item.messageEl, "Sent");
-    } catch (err) {
-      console.error(err);
-      updateMessageState(item.messageEl, "Failed");
-    }
-  });
-
-  queuedMessages = remaining;
-}
-
-function handleIncomingMessage(data, connection) {
-  let text = "";
-  let timestamp = Date.now();
-
-  if (typeof data === "string") {
-    text = data;
-  } else if (data && data.type === "chat" && typeof data.text === "string") {
-    text = data.text;
-    timestamp = data.timestamp || timestamp;
-  }
-
-  text = text.trim();
-  if (!text) return;
-
-  if (peerIdInput.value.trim() !== connection.peer) {
-    peerIdInput.value = connection.peer;
-  }
-  addChatMessage(text.slice(0, 1000), "incoming", timestamp);
-}
-
-function wireChatConnection(connection) {
-  if (!connection) return;
-
-  connection.on("open", () => {
-    chatConnection = connection;
-    chatConnectingPeer = null;
-    peerIdInput.value = connection.peer;
-    setChatStatus("Connected to " + connection.peer);
-    sendQueuedMessages(connection);
-    messageInput.focus();
-  });
-
-  connection.on("data", (data) => handleIncomingMessage(data, connection));
-
-  connection.on("close", () => {
-    if (chatConnection !== connection) return;
-    chatConnection = null;
-    chatConnectingPeer = null;
-    setChatStatus("Chat disconnected. Send a message to reconnect.");
-  });
-
-  connection.on("error", (err) => {
-    console.error(err);
-    if (chatConnection === connection || chatConnectingPeer === connection.peer) {
-      chatConnectingPeer = null;
-      setChatStatus("Could not connect to " + connection.peer + ".");
-    }
-  });
-}
-
-function ensureChatConnection(remoteId) {
-  if (!peer || peer.disconnected || !peer.open) {
-    setChatStatus("Still connecting. Try again in a moment.");
-    return null;
-  }
-  if (remoteId === peer.id) {
-    setChatStatus("You cannot chat with your own ID.");
-    return null;
-  }
-  if (isChatOpen() && chatConnection.peer === remoteId) {
-    return chatConnection;
-  }
-  if (chatConnectingPeer === remoteId) {
-    return chatConnection;
-  }
-
-  if (chatConnection && chatConnection.peer !== remoteId) {
-    chatConnection.close();
-    chatConnection = null;
-  }
-
-  chatConnectingPeer = remoteId;
-  setChatStatus("Connecting to " + remoteId + "…");
-  const connection = peer.connect(remoteId, { reliable: true, serialization: "json" });
-  chatConnection = connection;
-  wireChatConnection(connection);
-  return connection;
-}
-
-// Connect to the PeerJS signaling broker and get our ID.
 function initPeer() {
-  peer = new Peer();
-
-  peer.on("open", (id) => {
-    myIdEl.textContent = id;
-    setStatus(modeName() + " mode. Ready. Share your ID to receive a call.");
-    setChatStatus("Enter a friend’s ID to start chatting.");
-  });
-
-  peer.on("error", (err) => {
-    setStatus("Connection error: " + err.type);
-    console.error(err);
-  });
-
-  peer.on("disconnected", () => {
-    setStatus("Disconnected. Reconnecting…");
-    setChatStatus("Disconnected. Reconnecting…");
-    peer.reconnect();
-  });
-
-  // Incoming text chat connections are accepted automatically by PeerJS.
-  peer.on("connection", (connection) => {
-    chatConnection = connection;
-    chatConnectingPeer = connection.peer;
-    peerIdInput.value = connection.peer;
-    setChatStatus("Connecting to " + connection.peer + "…");
-    wireChatConnection(connection);
-  });
-
-  // Incoming call.
+  peer = new Peer(); peer.on("open", (id) => { myIdEl.textContent = id; status("Ready. Choose Call a Friend or Join a Room."); });
+  peer.on("error", (error) => { console.error(error); status("Connection error: " + (error.type || "unknown") + "."); });
+  peer.on("connection", (connection) => { privateConnection?.close(); privateConnection = connection; wirePrivateConnection(connection); });
   peer.on("call", (call) => {
-    if (currentCall) {
-      call.close();
-      setStatus("Already in a call. Incoming call declined.");
-      return;
-    }
-
-    pendingCall = call;
-    incomingRow.classList.remove("hidden");
-    setStatus("Incoming call…");
+    if (call.metadata?.kind === "group") { if (!room || call.metadata.room !== room.code) return call.close(); pendingGroupCalls.push(call); show("incomingModal"); $("incomingText").textContent = "A participant is inviting you to the group " + (call.metadata.video ? "video" : "audio") + " call."; return; }
+    if (privateCall || pendingPrivate) return call.close(); pendingPrivate = call; show("privateIncoming"); status("Incoming private call.");
   });
 }
-
-async function ensureLocalMedia() {
-  if (localStream) return true;
-  return refreshLocalMedia();
+async function answerIncomingGroup() {
+  const calls = pendingGroupCalls.splice(0); if (!calls.length) return hide("incomingModal");
+  room.callActive = true; room.video = Boolean(calls[0].metadata?.video); hide("incomingModal");
+  const stream = await getMedia(room.video); if (!stream) return;
+  addTile(peer.id, stream, true); hide("answerGroupBtn"); hide("startVideoBtn"); hide("startAudioBtn"); show("endGroupBtn"); $("groupCallStatus").textContent = "Connected to group call.";
+  calls.forEach((call) => { call.answer(stream); wireGroupCall(call); });
+  // Connect only to room members that did not already invite us.
+  connectGroupPeers();
 }
 
-// Start a call to a remote peer.
-async function startCall() {
-  const remoteId = peerIdInput.value.trim();
-  if (!remoteId) {
-    setStatus("Enter a friend's ID first.");
-    return;
-  }
-  if (!peer || peer.disconnected) {
-    setStatus("Still connecting. Try again in a moment.");
-    return;
-  }
-  if (!(await ensureLocalMedia())) {
-    return;
-  }
-
-  setStatus("Calling " + remoteId + " …");
-  ensureChatConnection(remoteId);
-  const call = peer.call(remoteId, localStream);
-  handleCall(call);
-}
-
-// Answer an incoming call.
-async function answerCall() {
-  if (!pendingCall) return;
-  if (!(await ensureLocalMedia())) {
-    return;
-  }
-
-  setStatus("Connecting…");
-  pendingCall.answer(localStream);
-  handleCall(pendingCall);
-  pendingCall = null;
-  incomingRow.classList.add("hidden");
-}
-
-// Shared call-event wiring for outgoing and incoming calls.
-function handleCall(call) {
-  if (!call) {
-    setStatus("Could not start call.");
-    return;
-  }
-
-  currentCall = call;
-  outgoingAudioSender = null;
-  outgoingVideoSender = null;
-  cacheOutgoingSenders();
-  callBtn.classList.add("hidden");
-  hangupBtn.classList.remove("hidden");
-
-  call.on("stream", (remoteStream) => {
-    remoteVideo.srcObject = remoteStream;
-    remoteVideo.play().catch(() => {
-      // User interaction with the call buttons normally permits playback.
-    });
-    if (isAudioOnly) {
-      applyAudioOutput();
-    }
-    setStatus("Connected.");
-  });
-
-  call.on("close", endCall);
-  call.on("error", (err) => {
-    setStatus("Call error: " + err.type);
-    endCall();
-  });
-}
-
-// Hang up.
-function endCall() {
-  const call = currentCall;
-  currentCall = null;
-  pendingCall = null;
-  outgoingAudioSender = null;
-  outgoingVideoSender = null;
-
-  if (call) {
-    call.close();
-  }
-
-  remoteVideo.srcObject = null;
-  incomingRow.classList.add("hidden");
-  callBtn.classList.remove("hidden");
-  hangupBtn.classList.add("hidden");
-  setStatus("Call ended. " + modeName() + " mode ready.");
-}
-
-async function toggleMode() {
-  const previousMode = isAudioOnly;
-  const previousVideoDeviceId = currentVideoDeviceId;
-
-  isAudioOnly = !isAudioOnly;
-  if (isAudioOnly) {
-    currentVideoDeviceId = null;
-  }
-  updateControls();
-  setControlsBusy(true);
-  setStatus("Switching to " + modeName().toLowerCase() + " mode…");
-
-  const mediaReady = await refreshLocalMedia();
-
-  if (!mediaReady) {
-    isAudioOnly = previousMode;
-    currentVideoDeviceId = previousVideoDeviceId;
-    updateControls();
-    await refreshLocalMedia();
-    setStatus("Could not switch modes. Staying in " + modeName().toLowerCase() + " mode.");
-  } else {
-    if (isAudioOnly) {
-      await applyAudioOutput();
-    }
-
-    setStatus(currentCall ? "Connected in " + modeName().toLowerCase() + " mode." : modeName() + " mode. Ready.");
-  }
-
-  setControlsBusy(false);
-  updateControls();
-}
-
-async function chooseNextCamera() {
-  const devices = await navigator.mediaDevices.enumerateDevices();
-  const cameras = devices.filter((device) => device.kind === "videoinput");
-
-  if (cameras.length > 1) {
-    const currentTrack = localStream && localStream.getVideoTracks()[0];
-    const currentSettings = currentTrack && currentTrack.getSettings ? currentTrack.getSettings() : {};
-    const activeDeviceId = currentSettings.deviceId || currentVideoDeviceId;
-    const activeIndex = cameras.findIndex((camera) => camera.deviceId === activeDeviceId);
-    const nextCamera = cameras[(activeIndex + 1 + cameras.length) % cameras.length];
-    currentVideoDeviceId = nextCamera.deviceId;
-    return;
-  }
-
-  currentVideoDeviceId = null;
-  facingMode = facingMode === "user" ? "environment" : "user";
-}
-
-async function switchCamera() {
-  if (isAudioOnly) {
-    setStatus("Switch to video mode before switching cameras.");
-    return;
-  }
-
-  const previousFacingMode = facingMode;
-  const previousVideoDeviceId = currentVideoDeviceId;
-
-  try {
-    await chooseNextCamera();
-  } catch (err) {
-    console.error(err);
-    currentVideoDeviceId = null;
-    facingMode = facingMode === "user" ? "environment" : "user";
-  }
-
-  setControlsBusy(true);
-  setStatus("Switching camera…");
-
-  // Mobile browsers often require the active camera track to be released
-  // before a different front/back camera can be opened.
-  if (localStream) {
-    localStream.getVideoTracks().forEach((track) => track.stop());
-  }
-
-  const mediaReady = await refreshLocalMedia();
-
-  if (!mediaReady) {
-    facingMode = previousFacingMode;
-    currentVideoDeviceId = previousVideoDeviceId;
-    await refreshLocalMedia();
-    setStatus("Could not switch camera.");
-  } else if (!currentCall) {
-    setStatus("Camera switched. Ready.");
-  } else {
-    setStatus("Camera switched.");
-  }
-
-  setControlsBusy(false);
-  updateControls();
-}
-
-function chooseOutputDevice(outputs, requestedMode) {
-  if (requestedMode === "earpiece") {
-    return outputs.find((device) => /earpiece|receiver|phone|communication/i.test(device.label)) ||
-      outputs.find((device) => device.deviceId === "communications") ||
-      null;
-  }
-
-  return outputs.find((device) => /speaker/i.test(device.label)) ||
-    outputs.find((device) => device.deviceId === "default") ||
-    outputs[0] ||
-    null;
-}
-
-async function applyAudioOutput() {
-  updateControls();
-
-  if (typeof remoteVideo.setSinkId !== "function") {
-    setStatus("Speaker/earpiece switching is not supported by this browser.");
-    return false;
-  }
-
-  try {
-    const devices = await navigator.mediaDevices.enumerateDevices();
-    const outputs = devices.filter((device) => device.kind === "audiooutput");
-    const outputDevice = chooseOutputDevice(outputs, outputMode);
-
-    if (!outputDevice) {
-      const defaultOutput = outputs.find((device) => device.deviceId === "default");
-      await remoteVideo.setSinkId(defaultOutput ? defaultOutput.deviceId : "");
-      setStatus(outputModeName() + " output not found. Using default output.");
-      return false;
-    }
-
-    await remoteVideo.setSinkId(outputDevice.deviceId);
-    return true;
-  } catch (err) {
-    setStatus("Could not change audio output on this browser.");
-    console.error(err);
-    return false;
-  }
-}
-
-async function toggleAudioOutput() {
-  if (!isAudioOnly) return;
-
-  outputMode = outputMode === "speaker" ? "earpiece" : "speaker";
-  updateControls();
-
-  if (await applyAudioOutput()) {
-    setStatus("Audio output set to " + outputModeName() + ".");
-  }
-}
-
-// Copy my ID to clipboard.
-copyBtn.addEventListener("click", async () => {
-  const id = myIdEl.textContent;
-  if (!id || id === "—") return;
-  try {
-    await navigator.clipboard.writeText(id);
-    const original = copyBtn.textContent;
-    copyBtn.textContent = "Copied";
-    setTimeout(() => (copyBtn.textContent = original), 1200);
-  } catch (err) {
-    console.error(err);
-  }
-});
-
-callBtn.addEventListener("click", startCall);
-answerBtn.addEventListener("click", answerCall);
-hangupBtn.addEventListener("click", endCall);
-modeToggleBtn.addEventListener("click", toggleMode);
-outputToggleBtn.addEventListener("click", toggleAudioOutput);
-switchCameraBtn.addEventListener("click", switchCamera);
-
-chatForm.addEventListener("submit", (event) => {
-  event.preventDefault();
-
-  const text = messageInput.value.trim();
-  const remoteId = peerIdInput.value.trim();
-  if (!text) return;
-  if (!remoteId) {
-    setChatStatus("Enter a friend’s ID first.");
-    peerIdInput.focus();
-    return;
-  }
-
-  const payload = {
-    type: "chat",
-    text: text.slice(0, 1000),
-    timestamp: Date.now(),
-  };
-  const messageEl = addChatMessage(payload.text, "outgoing", payload.timestamp, "Sending");
-  messageInput.value = "";
-
-  if (isChatOpen() && chatConnection.peer === remoteId) {
-    try {
-      chatConnection.send(payload);
-      updateMessageState(messageEl, "Sent");
-    } catch (err) {
-      console.error(err);
-      updateMessageState(messageEl, "Failed");
-    }
-    return;
-  }
-
-  queuedMessages.push({ peerId: remoteId, payload, messageEl });
-  if (!ensureChatConnection(remoteId)) {
-    queuedMessages = queuedMessages.filter((item) => item.messageEl !== messageEl);
-    updateMessageState(messageEl, "Failed");
-  }
-});
-
-clearChatBtn.addEventListener("click", () => {
-  chatMessagesEl.querySelectorAll(".message").forEach((message) => message.remove());
-  queuedMessages = [];
-  chatEmptyEl.classList.remove("hidden");
-  messageInput.focus();
-});
-
-peerIdInput.addEventListener("input", () => {
-  const remoteId = peerIdInput.value.trim();
-  if (isChatOpen() && remoteId === chatConnection.peer) {
-    setChatStatus("Connected to " + remoteId);
-  } else if (remoteId) {
-    setChatStatus("Ready to chat with " + remoteId);
-  } else {
-    setChatStatus("Enter a friend’s ID to start chatting.");
-  }
-});
-
-// Boot.
-updateControls();
-initMedia();
-initPeer();
+$("friendChoice").onclick = () => view("friendView"); $("roomChoice").onclick = () => view("roomView"); document.querySelectorAll(".back-btn").forEach((button) => button.onclick = () => { if (room) leaveRoom(false); view("homeView"); });
+$("copyBtn").onclick = () => copyText(peer?.id || "", $("copyBtn")); $("callBtn").onclick = () => startPrivateCall(true); $("audioCallBtn").onclick = () => startPrivateCall(false); $("answerPrivateBtn").onclick = answerPrivate; $("privateHangupBtn").onclick = endPrivateCall;
+$("privateChatForm").onsubmit = (event) => { event.preventDefault(); const text = safeText($("privateMessage").value), id = $("peerId").value.trim(); if (!text || !id) return; const connection = privateChatConnection(id); if (!connection) return $("privateChatStatus").textContent = "Could not start chat."; connection.on("open", () => connection.send({ type: "private-chat", text })); if (connection.open) connection.send({ type: "private-chat", text }); addMessage("privateMessages", text, true); $("privateMessage").value = ""; };
+$("clearPrivateChat").onclick = () => clearMessages("privateMessages"); $("createRoomBtn").onclick = createRoom; $("joinRoomBtn").onclick = joinRoom; $("roomCodeInput").oninput = (event) => { event.target.value = event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ""); }; $("copyRoomBtn").onclick = () => copyText(room?.code || "", $("copyRoomBtn")); $("leaveRoomBtn").onclick = () => leaveRoom(true);
+$("startVideoBtn").onclick = () => startGroupCall(true); $("startAudioBtn").onclick = () => startGroupCall(false); $("answerGroupBtn").onclick = answerGroupCall; $("endGroupBtn").onclick = () => endGroupCall(true);
+$("roomChatForm").onsubmit = (event) => { event.preventDefault(); const text = safeText($("roomMessage").value); if (!text || !room) return; if (room.creator) { broadcast({ type: "room-chat", text, sender: peer.id }); roomMessage(text, peer.id); } else sendHost({ type: "room-chat", text }); $("roomMessage").value = ""; }; $("clearRoomChat").onclick = () => clearMessages("roomMessages"); $("modalAnswerBtn").onclick = answerIncomingGroup; $("modalDeclineBtn").onclick = () => { pendingGroupCalls.splice(0).forEach((call) => call.close()); hide("incomingModal"); };
+window.addEventListener("beforeunload", () => { if (room?.creator) room.hostPeer?.destroy(); stopMedia(); }); initPeer();
