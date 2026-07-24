@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Call</title>
+  <link rel="stylesheet" href="css/style.css" />
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+</head>
+<body>
+  <main class="app">
+    <h1 class="title">Call</h1>
+
+    <div class="videos">
+      <video id="remoteVideo" class="remote" autoplay playsinline></video>
+      <video id="localVideo" class="local" autoplay playsinline muted></video>
+    </div>
+
+    <p id="status" class="status">Connecting…</p>
+
+    <div class="panel">
+      <div class="row">
+        <span class="label">Your ID</span>
+        <code id="myId" class="id">—</code>
+        <button id="copyBtn" class="btn small" type="button">Copy</button>
+      </div>
+
+      <div class="row">
+        <input id="peerId" class="input" type="text" placeholder="Enter friend's ID" autocomplete="off" />
+        <button id="callBtn" class="btn primary" type="button">Call</button>
+      </div>
+
+      <div id="incoming" class="row hidden">
+        <span class="label">Incoming call</span>
+        <button id="answerBtn" class="btn primary" type="button">Answer</button>
+      </div>
+
+      <div class="row">
+        <button id="hangupBtn" class="btn danger hidden" type="button">Hang Up</button>
+      </div>
+    </div>
+  </main>
+
+  <script src="js/app.js"></script>
+</body>
+</html>
