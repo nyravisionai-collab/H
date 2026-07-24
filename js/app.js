@@ -33,9 +33,58 @@ function addMessage(containerId, text, mine, sender = "") {
 function clearMessages(id) { $(id).replaceChildren(Object.assign(document.createElement("p"), { className: "empty", textContent: "No messages yet" })); }
 function copyText(text, button) { navigator.clipboard?.writeText(text).then(() => { const old = button.textContent; button.textContent = "Copied"; setTimeout(() => { button.textContent = old; }, 1000); }).catch(() => status("Could not copy to clipboard.")); }
 
+// File sharing (direct binary over PeerJS data channels with chunking)
+const FILE_CHUNK_SIZE = 32 * 1024;
+const incomingFiles = new Map();
+
+function fileTransferId() { return Date.now() + "-" + Math.random().toString(36).slice(2, 8); }
+
+function addFileLinkMessage(containerId, fileName, mine, sender = "", url = null) {
+  const container = $(containerId), empty = container.querySelector(".empty"); if (empty) empty.remove();
+  const item = document.createElement("article"); item.className = "message " + (mine ? "mine" : "theirs");
+  const body = document.createElement("div");
+  const link = document.createElement("a"); link.href = url || "#"; link.textContent = "📎 " + safeText(fileName); link.style.color = "var(--primary)"; link.style.textDecoration = "underline"; link.download = fileName || "file"; body.append(link);
+  item.append(body);
+  const meta = document.createElement("small"); meta.textContent = sender || new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); item.append(meta);
+  container.append(item); container.scrollTop = container.scrollHeight;
+}
+
+function handleFileChunk(data, containerId) {
+  if (!data || data.type !== "file-chunk") return;
+  const { fileId, name, mime, index, totalChunks, chunk, sender } = data;
+  if (!incomingFiles.has(fileId)) incomingFiles.set(fileId, { name, mime, chunks: new Map(), totalChunks, sender });
+  const fd = incomingFiles.get(fileId);
+  fd.chunks.set(index, chunk);
+  if (fd.chunks.size >= fd.totalChunks) {
+    const chunks = []; for (let i = 0; i < fd.totalChunks; i++) chunks.push(fd.chunks.get(i));
+    const blob = new Blob(chunks, { type: mime || "application/octet-stream" });
+    const url = URL.createObjectURL(blob);
+    addFileLinkMessage(containerId, fd.name, false, fd.sender || "Participant", url);
+    incomingFiles.delete(fileId);
+  }
+}
+
+function sendFileViaConnection(connection, file, containerId, mine = false, senderLabel = "") {
+  if (!connection?.open) return status("Connection is not open — cannot send file.");
+  const id = fileTransferId();
+  const url = URL.createObjectURL(file);
+  addFileLinkMessage(containerId, file.name, mine, senderLabel || (mine ? "You" : "Participant"), url);
+  const reader = new FileReader();
+  reader.onload = () => {
+    const buffer = reader.result; const total = Math.ceil(buffer.byteLength / FILE_CHUNK_SIZE);
+    for (let i = 0; i < total; i++) {
+      const chunk = buffer.slice(i * FILE_CHUNK_SIZE, (i + 1) * FILE_CHUNK_SIZE);
+      try { connection.send({ type: "file-chunk", fileId: id, name: file.name, mime: file.type || "application/octet-stream", index: i, totalChunks: total, chunk, sender: connection.peer || peer?.id }); } catch (e) { console.error("File chunk send error:", e); }
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
 function wirePrivateConnection(connection) {
   connection.on("open", () => { privateConnection = connection; $("privateChatStatus").textContent = "Connected to " + connection.peer; });
-  connection.on("data", (data) => { if (data?.type === "private-chat") addMessage("privateMessages", data.text, false); });
+  connection.on("data", (data) => {
+    if (data?.type === "private-chat") addMessage("privateMessages", data.text, false);
+    if (data?.type === "file-chunk") handleFileChunk(data, "privateMessages");
+  });
   connection.on("close", () => { if (privateConnection === connection) { privateConnection = null; $("privateChatStatus").textContent = "Chat disconnected."; } });
   connection.on("error", () => { $("privateChatStatus").textContent = "Could not connect to chat."; });
 }
@@ -43,7 +92,7 @@ function privateChatConnection(remoteId) {
   if (!peer?.open || !remoteId || remoteId === peer.id) return null;
   if (privateConnection?.open && privateConnection.peer === remoteId) return privateConnection;
   if (privateConnection) privateConnection.close();
-  privateConnection = peer.connect(remoteId, { reliable: true, serialization: "json" }); wirePrivateConnection(privateConnection); return privateConnection;
+  privateConnection = peer.connect(remoteId, { reliable: true }); wirePrivateConnection(privateConnection); return privateConnection;
 }
 function endPrivateCall() { const call = privateCall; privateCall = null; if (call) call.close(); $("privateTiles").replaceChildren(); if (!groupCalls.size) stopMedia(); hide("privateHangupBtn"); show("callBtn"); show("audioCallBtn"); status("Private call ended."); }
 function wirePrivateCall(call) {
@@ -75,11 +124,17 @@ function handleRoomData(data, connection) {
     if (data.type === "room-chat") { const text = safeText(data.text); if (text) { broadcast({ type: "room-chat", text, sender: connection.peer }); roomMessage(text, connection.peer); } }
     if (data.type === "start-call") { room.callActive = true; room.video = Boolean(data.video); broadcast({ type: "call-state", active: true, video: room.video, starter: connection.peer }); }
     if (data.type === "end-call") endGroupCall(true);
+    if (data.type === "file-chunk") { room.members.forEach((conn) => { if (conn.open && conn.peer !== connection.peer) conn.send(data); }); return; }
     return;
   }
   if (data.type === "welcome" || data.type === "roster") { room.roster = data.roster || []; room.callActive = Boolean(data.active); room.video = Boolean(data.video); updateRoomUI(); if (room.callActive) offerGroupAnswer(); }
   if (data.type === "room-chat") { const text = safeText(data.text); if (text) roomMessage(text, data.sender); }
   if (data.type === "call-state") { room.callActive = Boolean(data.active); room.video = Boolean(data.video); if (room.callActive) offerGroupAnswer(); else finishGroupCall(false); }
+  if (data.type === "file-chunk") {
+    if (room?.creator) { broadcast(data); }
+    else { handleFileChunk(data, "roomMessages"); }
+    return;
+  }
   if (data.type === "room-closed") { status("The room creator left; this room is closed."); leaveRoom(false); }
 }
 function wireHostConnection(connection) {
@@ -96,7 +151,7 @@ function createRoom() {
 }
 function joinRoom() {
   const code = $("roomCodeInput").value.toUpperCase().replace(/[^A-Z0-9]/g, ""); if (!/^[A-Z0-9]{6}$/.test(code)) return status("Enter a valid 6-character room code."); if (!peer?.open) return status("Still connecting — please try again.");
-  room = { code, creator: false, hostConnection: peer.connect(roomHostId(code), { reliable: true, serialization: "json" }), roster: [], callActive: false, video: true };
+  room = { code, creator: false, hostConnection: peer.connect(roomHostId(code), { reliable: true }), roster: [], callActive: false, video: true };
   room.hostConnection.on("open", () => { room.hostConnection.send({ type: "join", peerId: peer.id }); hide("roomLobby"); show("roomActive"); show("leaveRoomBtn"); status("Joining room " + code + "…"); });
   room.hostConnection.on("error", () => { status("Room not found or creator is offline."); leaveRoom(false); }); wireHostConnection(room.hostConnection);
 }
@@ -145,4 +200,35 @@ $("privateChatForm").onsubmit = (event) => { event.preventDefault(); const text 
 $("clearPrivateChat").onclick = () => clearMessages("privateMessages"); $("createRoomBtn").onclick = createRoom; $("joinRoomBtn").onclick = joinRoom; $("roomCodeInput").oninput = (event) => { event.target.value = event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ""); }; $("copyRoomBtn").onclick = () => copyText(room?.code || "", $("copyRoomBtn")); $("leaveRoomBtn").onclick = () => leaveRoom(true);
 $("startVideoBtn").onclick = () => startGroupCall(true); $("startAudioBtn").onclick = () => startGroupCall(false); $("answerGroupBtn").onclick = answerGroupCall; $("endGroupBtn").onclick = () => endGroupCall(true);
 $("roomChatForm").onsubmit = (event) => { event.preventDefault(); const text = safeText($("roomMessage").value); if (!text || !room) return; if (room.creator) { broadcast({ type: "room-chat", text, sender: peer.id }); roomMessage(text, peer.id); } else sendHost({ type: "room-chat", text }); $("roomMessage").value = ""; }; $("clearRoomChat").onclick = () => clearMessages("roomMessages"); $("modalAnswerBtn").onclick = answerIncomingGroup; $("modalDeclineBtn").onclick = () => { pendingGroupCalls.splice(0).forEach((call) => call.close()); hide("incomingModal"); };
-window.addEventListener("beforeunload", () => { if (room?.creator) room.hostPeer?.destroy(); stopMedia(); }); initPeer();
+window.addEventListener("beforeunload", () => { if (room?.creator) room.hostPeer?.destroy(); stopMedia(); });
+
+function handlePrivateFile(input) {
+  const file = input.files && input.files[0]; if (!file) return;
+  const id = $("peerId").value.trim(); if (!id) return status("Enter a friend's ID first.");
+  const connection = privateChatConnection(id);
+  if (!connection) return status("Could not connect for file transfer.");
+  sendFileViaConnection(connection, file, "privateMessages", true, "You");
+  input.value = "";
+}
+function handleRoomFile(input) {
+  const file = input.files && input.files[0]; if (!file) return;
+  if (!room) return status("Not in a room.");
+  if (room.creator) {
+    const url = URL.createObjectURL(file);
+    addFileLinkMessage("roomMessages", file.name, true, "You", url);
+    const reader = new FileReader();
+    reader.onload = () => {
+      const buffer = reader.result; const total = Math.ceil(buffer.byteLength / FILE_CHUNK_SIZE);
+      for (let i = 0; i < total; i++) {
+        const chunk = buffer.slice(i * FILE_CHUNK_SIZE, (i + 1) * FILE_CHUNK_SIZE);
+        const chunkData = { type: "file-chunk", fileId: fileTransferId(), name: file.name, mime: file.type || "application/octet-stream", index: i, totalChunks: total, chunk, sender: peer?.id || "" };
+        broadcast(chunkData);
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  } else {
+    sendFileViaConnection(room.hostConnection, file, "roomMessages", true, "You");
+  }
+  input.value = "";
+}
+initPeer();

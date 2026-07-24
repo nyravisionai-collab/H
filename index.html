@@ -28,7 +28,7 @@
       <section class="panel chat-panel" aria-labelledby="privateChatTitle">
         <div class="chat-heading"><div><h3 id="privateChatTitle">Private chat</h3><p id="privateChatStatus" class="muted">Enter a friend’s ID to start chatting.</p></div><button id="clearPrivateChat" class="btn small" type="button">Clear</button></div>
         <div id="privateMessages" class="messages" role="log" aria-live="polite"><p class="empty">No messages yet</p></div>
-        <form id="privateChatForm" class="chat-form"><input id="privateMessage" class="input" maxlength="1000" placeholder="Type a message…" autocomplete="off"><button class="btn primary" type="submit">Send</button></form>
+        <form id="privateChatForm" class="chat-form"><input id="privateMessage" class="input" maxlength="1000" placeholder="Type a message…" autocomplete="off"><label class="btn small" title="Send file" style="cursor:pointer;flex:0 0 auto;display:inline-flex;align-items:center;gap:4px;"><input id="privateFile" type="file" style="display:none" onchange="handlePrivateFile(this)"><span>📎</span></label><button class="btn primary" type="submit">Send</button></form>
       </section>
     </section>
 
@@ -50,7 +50,7 @@
         <section class="panel chat-panel" aria-labelledby="roomChatTitle">
           <div class="chat-heading"><div><h3 id="roomChatTitle">Room chat</h3><p class="muted">Messages are shared only with current room participants.</p></div><button id="clearRoomChat" class="btn small" type="button">Clear</button></div>
           <div id="roomMessages" class="messages" role="log" aria-live="polite"><p class="empty">No messages yet</p></div>
-          <form id="roomChatForm" class="chat-form"><input id="roomMessage" class="input" maxlength="1000" placeholder="Message the room…" autocomplete="off"><button class="btn primary" type="submit">Send</button></form>
+          <form id="roomChatForm" class="chat-form"><input id="roomMessage" class="input" maxlength="1000" placeholder="Message the room…" autocomplete="off"><label class="btn small" title="Send file" style="cursor:pointer;flex:0 0 auto;display:inline-flex;align-items:center;gap:4px;"><input id="roomFile" type="file" style="display:none" onchange="handleRoomFile(this)"><span>📎</span></label><button class="btn primary" type="submit">Send</button></form>
         </section>
       </div>
     </section>
