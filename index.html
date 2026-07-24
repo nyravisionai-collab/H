@@ -3,59 +3,165 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Call</title>
+  <meta name="description" content="A lightweight PeerJS app for private calls, temporary group rooms, chat, and peer-to-peer file sharing.">
+  <title>Peer Call</title>
   <link rel="stylesheet" href="css/style.css">
   <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 </head>
 <body>
   <main class="app">
-    <header class="app-header"><h1>Call</h1><p id="status" aria-live="polite">Connecting…</p></header>
+    <header class="app-header">
+      <div>
+        <p class="eyebrow">Browser WebRTC</p>
+        <h1>Peer Call</h1>
+        <p class="subtitle">Private calls, temporary rooms, chat, and file sharing — no sign-up needed.</p>
+      </div>
+      <p id="status" class="status-pill" role="status" aria-live="polite">Connecting…</p>
+    </header>
 
     <section id="homeView" class="chooser" aria-label="Choose how to connect">
-      <button id="friendChoice" class="choice" type="button"><strong>Call a Friend</strong><span>Private audio, video and chat</span></button>
-      <button id="roomChoice" class="choice" type="button"><strong>Join a Room</strong><span>Temporary group audio, video and chat</span></button>
+      <button id="friendChoice" class="choice" type="button">
+        <strong>Call a Friend</strong>
+        <span>Share your Peer ID for one-to-one audio, video, chat, and files.</span>
+      </button>
+      <button id="roomChoice" class="choice" type="button">
+        <strong>Join a Room</strong>
+        <span>Create or join a temporary group room with audio, video, chat, and files.</span>
+      </button>
     </section>
 
-    <section id="friendView" class="view hidden">
-      <div class="view-title"><h2>Call a Friend</h2><button class="btn small back-btn" type="button">Back</button></div>
+    <section id="friendView" class="view hidden" aria-labelledby="friendTitle">
+      <div class="view-title">
+        <h2 id="friendTitle">Call a Friend</h2>
+        <button class="btn small back-btn" type="button">Back</button>
+      </div>
+
       <div id="privateTiles" class="tiles private-tiles" aria-label="Private call video"></div>
+
       <div class="panel">
-        <div class="row"><span class="label">Your ID</span><code id="myId" class="id">—</code><button id="copyBtn" class="btn small" type="button">Copy</button></div>
-        <div class="row"><input id="peerId" class="input" placeholder="Enter friend's ID" autocomplete="off"><button id="callBtn" class="btn primary" type="button">Video Call</button><button id="audioCallBtn" class="btn" type="button">Audio Call</button></div>
-        <div id="privateIncoming" class="row hidden"><span class="label">Incoming private call</span><button id="answerPrivateBtn" class="btn primary" type="button">Answer</button></div>
+        <div class="row">
+          <span class="label">Your ID</span>
+          <code id="myId" class="id">—</code>
+          <button id="copyBtn" class="btn small" type="button">Copy</button>
+        </div>
+        <div class="row">
+          <label for="peerId" class="sr-only">Friend's Peer ID</label>
+          <input id="peerId" class="input" placeholder="Enter friend's ID" autocomplete="off" spellcheck="false">
+          <button id="callBtn" class="btn primary" type="button">Video Call</button>
+          <button id="audioCallBtn" class="btn" type="button">Audio Call</button>
+        </div>
+        <div id="privateIncoming" class="row hidden">
+          <span class="label">Incoming private call</span>
+          <button id="answerPrivateBtn" class="btn primary" type="button">Answer</button>
+        </div>
+        <div id="privateCallControls" class="call-controls hidden" aria-label="Private call controls">
+          <button id="privateMuteBtn" class="btn" type="button" aria-pressed="false">Mute mic</button>
+          <button id="privateCameraBtn" class="btn" type="button" aria-pressed="false">Turn camera off</button>
+        </div>
         <button id="privateHangupBtn" class="btn danger hidden" type="button">Hang Up</button>
       </div>
+
       <section class="panel chat-panel" aria-labelledby="privateChatTitle">
-        <div class="chat-heading"><div><h3 id="privateChatTitle">Private chat</h3><p id="privateChatStatus" class="muted">Enter a friend’s ID to start chatting.</p></div><button id="clearPrivateChat" class="btn small" type="button">Clear</button></div>
-        <div id="privateMessages" class="messages" role="log" aria-live="polite"><p class="empty">No messages yet</p></div>
-        <form id="privateChatForm" class="chat-form"><input id="privateMessage" class="input" maxlength="1000" placeholder="Type a message…" autocomplete="off"><label class="btn small file-label" title="Send file" aria-label="Send file"><input id="privateFile" type="file" class="file-input" onchange="handlePrivateFile(this)"><span aria-hidden="true">📎</span></label><button class="btn primary" type="submit">Send</button></form>
+        <div class="chat-heading">
+          <div>
+            <h3 id="privateChatTitle">Private chat</h3>
+            <p id="privateChatStatus" class="muted">Enter a friend’s ID to start chatting.</p>
+          </div>
+          <button id="clearPrivateChat" class="btn small" type="button">Clear</button>
+        </div>
+        <div id="privateMessages" class="messages" role="log" aria-live="polite">
+          <p class="empty">No messages yet</p>
+        </div>
+        <form id="privateChatForm" class="chat-form">
+          <label for="privateMessage" class="sr-only">Private message</label>
+          <input id="privateMessage" class="input" maxlength="1000" placeholder="Type a message…" autocomplete="off">
+          <label class="btn small file-label" title="Send file" aria-label="Send file">
+            <input id="privateFile" type="file" class="file-input" onchange="handlePrivateFile(this)">
+            <span aria-hidden="true">📎</span>
+          </label>
+          <button class="btn primary" type="submit">Send</button>
+        </form>
       </section>
     </section>
 
-    <section id="roomView" class="view hidden">
-      <div class="view-title"><h2>Group Room</h2><button id="leaveRoomBtn" class="btn small hidden" type="button">Leave Room</button><button class="btn small back-btn" type="button">Back</button></div>
+    <section id="roomView" class="view hidden" aria-labelledby="roomTitle">
+      <div class="view-title">
+        <h2 id="roomTitle">Group Room</h2>
+        <button id="leaveRoomBtn" class="btn small hidden" type="button">Leave Room</button>
+        <button class="btn small back-btn" type="button">Back</button>
+      </div>
+
       <div id="roomLobby" class="panel">
         <p class="muted">Rooms are temporary and exist only while their creator stays online.</p>
         <button id="createRoomBtn" class="btn primary" type="button">Create a Room</button>
         <div class="divider">or</div>
-        <div class="row"><input id="roomCodeInput" class="input room-code" maxlength="6" placeholder="6-character code" autocomplete="off"><button id="joinRoomBtn" class="btn" type="button">Join Room</button></div>
+        <div class="row">
+          <label for="roomCodeInput" class="sr-only">Room code</label>
+          <input id="roomCodeInput" class="input room-code" maxlength="6" placeholder="6-character code" autocomplete="off" spellcheck="false">
+          <button id="joinRoomBtn" class="btn" type="button">Join Room</button>
+        </div>
       </div>
+
       <div id="roomActive" class="hidden">
-        <div class="panel room-summary"><div><span class="label">Room code</span><code id="roomCode" class="id">—</code></div><button id="copyRoomBtn" class="btn small" type="button">Copy code</button><p id="participantCount" class="muted">1 participant online</p></div>
-        <section class="panel">
-          <div class="call-actions"><button id="startVideoBtn" class="btn primary" type="button">Start Video Call</button><button id="startAudioBtn" class="btn" type="button">Start Audio Call</button><button id="answerGroupBtn" class="btn primary hidden" type="button">Answer Group Call</button><button id="endGroupBtn" class="btn danger hidden" type="button">End Call for Everyone</button></div>
+        <div class="panel room-summary">
+          <div>
+            <span class="label">Room code</span>
+            <code id="roomCode" class="id">—</code>
+          </div>
+          <button id="copyRoomBtn" class="btn small" type="button">Copy code</button>
+          <p id="participantCount" class="muted">1 participant online</p>
+        </div>
+
+        <section class="panel" aria-labelledby="groupCallTitle">
+          <h3 id="groupCallTitle" class="section-title">Group call</h3>
+          <div class="call-actions">
+            <button id="startVideoBtn" class="btn primary" type="button">Start Video Call</button>
+            <button id="startAudioBtn" class="btn" type="button">Start Audio Call</button>
+            <button id="answerGroupBtn" class="btn primary hidden" type="button">Answer Group Call</button>
+            <button id="endGroupBtn" class="btn danger hidden" type="button">End Call for Everyone</button>
+          </div>
+          <div id="groupCallControls" class="call-controls hidden" aria-label="Group call controls">
+            <button id="groupMuteBtn" class="btn" type="button" aria-pressed="false">Mute mic</button>
+            <button id="groupCameraBtn" class="btn" type="button" aria-pressed="false">Turn camera off</button>
+          </div>
           <p id="groupCallStatus" class="muted">No group call is active.</p>
           <div id="participantTiles" class="tiles" aria-label="Group call participants"></div>
         </section>
+
         <section class="panel chat-panel" aria-labelledby="roomChatTitle">
-          <div class="chat-heading"><div><h3 id="roomChatTitle">Room chat</h3><p class="muted">Messages are shared only with current room participants.</p></div><button id="clearRoomChat" class="btn small" type="button">Clear</button></div>
-          <div id="roomMessages" class="messages" role="log" aria-live="polite"><p class="empty">No messages yet</p></div>
-          <form id="roomChatForm" class="chat-form"><input id="roomMessage" class="input" maxlength="1000" placeholder="Message the room…" autocomplete="off"><label class="btn small file-label" title="Send file" aria-label="Send file"><input id="roomFile" type="file" class="file-input" onchange="handleRoomFile(this)"><span aria-hidden="true">📎</span></label><button class="btn primary" type="submit">Send</button></form>
+          <div class="chat-heading">
+            <div>
+              <h3 id="roomChatTitle">Room chat</h3>
+              <p class="muted">Messages are shared only with current room participants.</p>
+            </div>
+            <button id="clearRoomChat" class="btn small" type="button">Clear</button>
+          </div>
+          <div id="roomMessages" class="messages" role="log" aria-live="polite">
+            <p class="empty">No messages yet</p>
+          </div>
+          <form id="roomChatForm" class="chat-form">
+            <label for="roomMessage" class="sr-only">Room message</label>
+            <input id="roomMessage" class="input" maxlength="1000" placeholder="Message the room…" autocomplete="off">
+            <label class="btn small file-label" title="Send file" aria-label="Send file">
+              <input id="roomFile" type="file" class="file-input" onchange="handleRoomFile(this)">
+              <span aria-hidden="true">📎</span>
+            </label>
+            <button class="btn primary" type="submit">Send</button>
+          </form>
         </section>
       </div>
     </section>
 
-    <div id="incomingModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="incomingTitle"><div class="panel"><h2 id="incomingTitle">Incoming group call</h2><p id="incomingText" class="muted">Join the call?</p><div class="row"><button id="modalAnswerBtn" class="btn primary" type="button">Answer</button><button id="modalDeclineBtn" class="btn" type="button">Not now</button></div></div></div>
+    <div id="incomingModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="incomingTitle">
+      <div class="panel">
+        <h2 id="incomingTitle">Incoming group call</h2>
+        <p id="incomingText" class="muted">Join the call?</p>
+        <div class="row">
+          <button id="modalAnswerBtn" class="btn primary" type="button">Answer</button>
+          <button id="modalDeclineBtn" class="btn" type="button">Not now</button>
+        </div>
+      </div>
+    </div>
   </main>
   <script src="js/app.js"></script>
 </body>
