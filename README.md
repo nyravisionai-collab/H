@@ -1,24 +1,33 @@
 # Call
 
-A minimal, browser-based calling and chat web app: share your ID, call or
-message a friend by their ID, answer, and hang up. Calls support video mode,
-audio-only mode, audio output selection in audio-only mode, and camera switching
-while in video mode. Text messages are sent directly between peers in real time.
+A static, browser-based PeerJS/WebRTC calling app. It supports both private
+one-to-one calls and temporary group rooms without an application backend.
 
-Built with [WebRTC](https://webrtc.org/) via
-[PeerJS](https://peerjs.com/), so it runs entirely in the browser and can be
-hosted as a static site (e.g. GitHub Pages) with no backend.
+## Use it
 
-## How to use
+1. Open the site. It starts at a choice between **Call a Friend** and **Join a Room**.
+2. For a private call, copy your Peer ID, share it with a friend, enter their ID,
+   and choose **Call**. Private text chat works before, during, and after a call.
+3. For a group, choose **Create a Room** and share the generated six-character
+   code, or enter a shared code to join an existing room.
+4. In a room, use **Start Video Call** or **Start Audio Call**. Other members can
+   answer the invitation; people joining an active room are invited automatically.
+   Use **End Call for Everyone** to stop the current group call, or **Leave Room**
+   to leave the room.
 
-1. Open the site and allow camera/microphone access.
-2. Use **Use Audio-Only** if you want to call without camera video.
-3. Copy your **Your ID** and send it to a friend.
-4. Enter your friend's ID and press **Call** — or press **Answer** when they call you.
-5. To chat without calling, enter your friend's ID, type a message, and press **Send**.
-6. During a video call, press **Switch Camera** to change cameras.
-7. In audio-only mode, use **Output: Speaker/Earpiece** when your browser supports audio output switching.
-8. Press **Hang Up** to end the call. Chat remains available before, during, and after calls.
+Camera and microphone permission is requested only when someone starts or
+answers a call—not when the page opens. Chat messages are rendered as text, not
+HTML, so messages cannot inject markup into the page.
 
-> Note: WebRTC requires a secure context, so the app must be served over
-> `https://` (GitHub Pages provides this) or from `localhost`.
+## How rooms work
+
+The room creator reserves a temporary PeerJS ID derived from the room code and
+acts only as the membership coordinator. The creator relays membership, call
+state, and chat notifications; browser-to-browser WebRTC connections carry
+media. Consequently, rooms remain available only while the creator has the page
+open. This is intentionally a lightweight temporary-room design, not a durable
+or moderated conferencing service.
+
+The app uses the public PeerJS signaling service and must be served from a
+secure context (`https://`) or `localhost`; GitHub Pages is suitable. PeerJS is
+loaded from the PeerJS CDN, so clients also need network access to that service.
