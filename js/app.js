@@ -17,6 +17,12 @@ const modeToggleBtn = document.getElementById("modeToggleBtn");
 const outputToggleBtn = document.getElementById("outputToggleBtn");
 const switchCameraBtn = document.getElementById("switchCameraBtn");
 const incomingRow = document.getElementById("incoming");
+const chatStatusEl = document.getElementById("chatStatus");
+const chatMessagesEl = document.getElementById("chatMessages");
+const chatEmptyEl = document.getElementById("chatEmpty");
+const chatForm = document.getElementById("chatForm");
+const messageInput = document.getElementById("messageInput");
+const clearChatBtn = document.getElementById("clearChatBtn");
 
 let peer = null;
 let localStream = null;
@@ -28,6 +34,9 @@ let facingMode = "user";
 let currentVideoDeviceId = null;
 let outgoingAudioSender = null;
 let outgoingVideoSender = null;
+let chatConnection = null;
+let chatConnectingPeer = null;
+let queuedMessages = [];
 
 function setStatus(text) {
   statusEl.textContent = text;
@@ -166,6 +175,150 @@ async function initMedia() {
   }
 }
 
+function setChatStatus(text) {
+  chatStatusEl.textContent = text;
+}
+
+function formatMessageTime(timestamp) {
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return "Now";
+  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function addChatMessage(text, direction, timestamp = Date.now(), state = "") {
+  chatEmptyEl.classList.add("hidden");
+
+  const messageEl = document.createElement("article");
+  messageEl.className = "message " + direction;
+  if (state === "failed") messageEl.classList.add("failed");
+
+  const textEl = document.createElement("p");
+  textEl.className = "message-text";
+  textEl.textContent = text;
+
+  const metaEl = document.createElement("p");
+  metaEl.className = "message-meta";
+  metaEl.textContent = formatMessageTime(timestamp) + (state ? " · " + state : "");
+
+  messageEl.append(textEl, metaEl);
+  chatMessagesEl.appendChild(messageEl);
+  chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
+  return messageEl;
+}
+
+function updateMessageState(messageEl, state) {
+  if (!messageEl) return;
+  messageEl.classList.toggle("failed", state === "Failed");
+  const metaEl = messageEl.querySelector(".message-meta");
+  if (!metaEl) return;
+  const time = metaEl.textContent.split(" · ")[0];
+  metaEl.textContent = time + (state ? " · " + state : "");
+}
+
+function isChatOpen(connection = chatConnection) {
+  return Boolean(connection && connection.open);
+}
+
+function sendQueuedMessages(connection) {
+  const remaining = [];
+
+  queuedMessages.forEach((item) => {
+    if (item.peerId !== connection.peer) {
+      remaining.push(item);
+      return;
+    }
+
+    try {
+      connection.send(item.payload);
+      updateMessageState(item.messageEl, "Sent");
+    } catch (err) {
+      console.error(err);
+      updateMessageState(item.messageEl, "Failed");
+    }
+  });
+
+  queuedMessages = remaining;
+}
+
+function handleIncomingMessage(data, connection) {
+  let text = "";
+  let timestamp = Date.now();
+
+  if (typeof data === "string") {
+    text = data;
+  } else if (data && data.type === "chat" && typeof data.text === "string") {
+    text = data.text;
+    timestamp = data.timestamp || timestamp;
+  }
+
+  text = text.trim();
+  if (!text) return;
+
+  if (peerIdInput.value.trim() !== connection.peer) {
+    peerIdInput.value = connection.peer;
+  }
+  addChatMessage(text.slice(0, 1000), "incoming", timestamp);
+}
+
+function wireChatConnection(connection) {
+  if (!connection) return;
+
+  connection.on("open", () => {
+    chatConnection = connection;
+    chatConnectingPeer = null;
+    peerIdInput.value = connection.peer;
+    setChatStatus("Connected to " + connection.peer);
+    sendQueuedMessages(connection);
+    messageInput.focus();
+  });
+
+  connection.on("data", (data) => handleIncomingMessage(data, connection));
+
+  connection.on("close", () => {
+    if (chatConnection !== connection) return;
+    chatConnection = null;
+    chatConnectingPeer = null;
+    setChatStatus("Chat disconnected. Send a message to reconnect.");
+  });
+
+  connection.on("error", (err) => {
+    console.error(err);
+    if (chatConnection === connection || chatConnectingPeer === connection.peer) {
+      chatConnectingPeer = null;
+      setChatStatus("Could not connect to " + connection.peer + ".");
+    }
+  });
+}
+
+function ensureChatConnection(remoteId) {
+  if (!peer || peer.disconnected || !peer.open) {
+    setChatStatus("Still connecting. Try again in a moment.");
+    return null;
+  }
+  if (remoteId === peer.id) {
+    setChatStatus("You cannot chat with your own ID.");
+    return null;
+  }
+  if (isChatOpen() && chatConnection.peer === remoteId) {
+    return chatConnection;
+  }
+  if (chatConnectingPeer === remoteId) {
+    return chatConnection;
+  }
+
+  if (chatConnection && chatConnection.peer !== remoteId) {
+    chatConnection.close();
+    chatConnection = null;
+  }
+
+  chatConnectingPeer = remoteId;
+  setChatStatus("Connecting to " + remoteId + "…");
+  const connection = peer.connect(remoteId, { reliable: true, serialization: "json" });
+  chatConnection = connection;
+  wireChatConnection(connection);
+  return connection;
+}
+
 // Connect to the PeerJS signaling broker and get our ID.
 function initPeer() {
   peer = new Peer();
@@ -173,6 +326,7 @@ function initPeer() {
   peer.on("open", (id) => {
     myIdEl.textContent = id;
     setStatus(modeName() + " mode. Ready. Share your ID to receive a call.");
+    setChatStatus("Enter a friend’s ID to start chatting.");
   });
 
   peer.on("error", (err) => {
@@ -182,7 +336,17 @@ function initPeer() {
 
   peer.on("disconnected", () => {
     setStatus("Disconnected. Reconnecting…");
+    setChatStatus("Disconnected. Reconnecting…");
     peer.reconnect();
+  });
+
+  // Incoming text chat connections are accepted automatically by PeerJS.
+  peer.on("connection", (connection) => {
+    chatConnection = connection;
+    chatConnectingPeer = connection.peer;
+    peerIdInput.value = connection.peer;
+    setChatStatus("Connecting to " + connection.peer + "…");
+    wireChatConnection(connection);
   });
 
   // Incoming call.
@@ -220,6 +384,7 @@ async function startCall() {
   }
 
   setStatus("Calling " + remoteId + " …");
+  ensureChatConnection(remoteId);
   const call = peer.call(remoteId, localStream);
   handleCall(call);
 }
@@ -455,6 +620,62 @@ hangupBtn.addEventListener("click", endCall);
 modeToggleBtn.addEventListener("click", toggleMode);
 outputToggleBtn.addEventListener("click", toggleAudioOutput);
 switchCameraBtn.addEventListener("click", switchCamera);
+
+chatForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+
+  const text = messageInput.value.trim();
+  const remoteId = peerIdInput.value.trim();
+  if (!text) return;
+  if (!remoteId) {
+    setChatStatus("Enter a friend’s ID first.");
+    peerIdInput.focus();
+    return;
+  }
+
+  const payload = {
+    type: "chat",
+    text: text.slice(0, 1000),
+    timestamp: Date.now(),
+  };
+  const messageEl = addChatMessage(payload.text, "outgoing", payload.timestamp, "Sending");
+  messageInput.value = "";
+
+  if (isChatOpen() && chatConnection.peer === remoteId) {
+    try {
+      chatConnection.send(payload);
+      updateMessageState(messageEl, "Sent");
+    } catch (err) {
+      console.error(err);
+      updateMessageState(messageEl, "Failed");
+    }
+    return;
+  }
+
+  queuedMessages.push({ peerId: remoteId, payload, messageEl });
+  if (!ensureChatConnection(remoteId)) {
+    queuedMessages = queuedMessages.filter((item) => item.messageEl !== messageEl);
+    updateMessageState(messageEl, "Failed");
+  }
+});
+
+clearChatBtn.addEventListener("click", () => {
+  chatMessagesEl.querySelectorAll(".message").forEach((message) => message.remove());
+  queuedMessages = [];
+  chatEmptyEl.classList.remove("hidden");
+  messageInput.focus();
+});
+
+peerIdInput.addEventListener("input", () => {
+  const remoteId = peerIdInput.value.trim();
+  if (isChatOpen() && remoteId === chatConnection.peer) {
+    setChatStatus("Connected to " + remoteId);
+  } else if (remoteId) {
+    setChatStatus("Ready to chat with " + remoteId);
+  } else {
+    setChatStatus("Enter a friend’s ID to start chatting.");
+  }
+});
 
 // Boot.
 updateControls();
