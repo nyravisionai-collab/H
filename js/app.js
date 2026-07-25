@@ -378,13 +378,20 @@ function updateRoomUI() { if (!room) return; $("roomCode").textContent = room.co
 function announceRoster() { const roster = allRoomIds(); broadcast({ type: "roster", roster, active: room.callActive, video: room.video }); updateRoomUI(); }
 function roomMessage(text, sender) { addMessage("roomMessages", text, sender === peer.id, sender === peer.id ? "You" : "Participant"); }
 function clearRoomJoinTimer() { if (roomJoinTimer) clearTimeout(roomJoinTimer); roomJoinTimer = null; }
+function closePendingGroupCalls() { pendingGroupCalls.splice(0).forEach((call) => call.close()); hide("incomingModal"); }
+function showIncomingGroupCall(video) {
+  if (!room || inGroupCall) return;
+  offerGroupAnswer();
+  show("incomingModal");
+  $("incomingText").textContent = "A participant is inviting you to the group " + (video ? "video" : "audio") + " call.";
+}
 function handleRoomData(data, connection) {
   if (!data || typeof data.type !== "string") return;
   if (room?.creator) {
     if (data.type === "join" && data.peerId === connection.peer) { room.members.set(connection.peer, connection); connection.send({ type: "welcome", code: room.code, roster: allRoomIds(), active: room.callActive, video: room.video }); announceRoster(); if (room.callActive && localStream) connectGroupPeers(); status("Room active — share the code."); }
     if (data.type === "leave") { room.members.delete(connection.peer); announceRoster(); }
     if (data.type === "room-chat") { const text = safeText(data.text); if (text) { broadcast({ type: "room-chat", text, sender: connection.peer }); roomMessage(text, connection.peer); } }
-    if (data.type === "start-call") { room.callActive = true; room.video = Boolean(data.video); broadcast({ type: "call-state", active: true, video: room.video, starter: connection.peer }); }
+    if (data.type === "start-call") { room.callActive = true; room.video = Boolean(data.video); broadcast({ type: "call-state", active: true, video: room.video, starter: connection.peer }); if (!inGroupCall) offerGroupAnswer(); }
     if (data.type === "end-call") endGroupCall(true);
     if (data.type === "file-start" || data.type === "file-chunk") {
       // Relay to every other member (never back to the sender) and also assemble
@@ -588,6 +595,7 @@ async function startGroupCall(video) {
   connectGroupPeers();
 }
 async function answerGroupCall() {
+  if (pendingGroupCalls.length) return answerIncomingGroup();
   if (!room?.callActive) return;
   if (privateCall) return status("End the private call before joining a group call.");
   const stream = await getMedia(room.video); if (!stream) return;
@@ -603,6 +611,7 @@ async function answerGroupCall() {
   connectGroupPeers();
 }
 function finishGroupCall(resetState = true) {
+  closePendingGroupCalls();
   groupCalls.forEach((call) => call.close());
   groupCalls.clear();
   inGroupCall = false;
@@ -632,18 +641,38 @@ function initPeer() {
   });
   peer.on("connection", (connection) => { privateConnection?.close(); privateConnection = connection; wirePrivateConnection(connection); });
   peer.on("call", (call) => {
-    if (call.metadata?.kind === "group") { if (!room || call.metadata.room !== room.code) return call.close(); pendingGroupCalls.push(call); show("incomingModal"); $("incomingText").textContent = "A participant is inviting you to the group " + (call.metadata.video ? "video" : "audio") + " call."; return; }
+    if (call.metadata?.kind === "group") {
+      if (!room || call.metadata.room !== room.code) return call.close();
+      room.callActive = true;
+      room.video = Boolean(call.metadata.video);
+      if (inGroupCall && localStream) {
+        if (groupCalls.has(call.peer)) return call.close();
+        call.answer(localStream);
+        wireGroupCall(call);
+        return;
+      }
+      if (pendingGroupCalls.some((pending) => pending.peer === call.peer)) return call.close();
+      pendingGroupCalls.push(call);
+      showIncomingGroupCall(room.video);
+      return;
+    }
     if (privateCall || pendingPrivate) return call.close(); pendingPrivate = call; show("privateIncoming"); status("Incoming private call.");
   });
 }
 async function answerIncomingGroup() {
   if (privateCall) return status("End the private call before joining a group call.");
-  const calls = pendingGroupCalls.splice(0); if (!calls.length) return hide("incomingModal");
-  room.callActive = true; room.video = Boolean(calls[0].metadata?.video); hide("incomingModal");
-  const stream = await getMedia(room.video); if (!stream) { calls.forEach((call) => call.close()); return; }
+  const calls = pendingGroupCalls.splice(0);
+  hide("incomingModal");
+  if (!calls.length) return;
+  if (!room) { calls.forEach((call) => call.close()); return; }
+  const matchingCalls = calls.filter((call) => call.metadata?.room === room.code);
+  calls.forEach((call) => { if (!matchingCalls.includes(call)) call.close(); });
+  if (!matchingCalls.length) return;
+  room.callActive = true; room.video = Boolean(matchingCalls[0].metadata?.video);
+  const stream = await getMedia(room.video); if (!stream) { matchingCalls.forEach((call) => call.close()); return; }
   inGroupCall = true;
   addTile(peer.id, stream, true); hide("answerGroupBtn"); hide("startVideoBtn"); hide("startAudioBtn"); show("groupCallControls"); show("endGroupBtn"); updateMediaControls(); $("groupCallStatus").textContent = "Connected to group call.";
-  calls.forEach((call) => { call.answer(stream); wireGroupCall(call); });
+  matchingCalls.forEach((call) => { call.answer(stream); wireGroupCall(call); });
   // Connect only to room members that did not already invite us.
   connectGroupPeers();
 }
@@ -681,7 +710,7 @@ $("roomChatForm").onsubmit = (event) => {
   }
   $("roomMessage").value = "";
 };
-$("clearRoomChat").onclick = () => clearMessages("roomMessages"); $("modalAnswerBtn").onclick = answerIncomingGroup; $("modalDeclineBtn").onclick = () => { pendingGroupCalls.splice(0).forEach((call) => call.close()); hide("incomingModal"); };
+$("clearRoomChat").onclick = () => clearMessages("roomMessages"); $("modalAnswerBtn").onclick = answerIncomingGroup; $("modalDeclineBtn").onclick = closePendingGroupCalls;
 window.addEventListener("beforeunload", () => { if (room?.creator) room.hostPeer?.destroy(); stopMedia(); });
 
 async function handlePrivateFile(input) {
