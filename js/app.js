@@ -360,7 +360,7 @@ async function startPrivateCall(video = true) {
   const remoteId = $("peerId").value.trim(); if (!remoteId) return status("Enter a friend's ID first."); if (remoteId === peer?.id) return status("You cannot call your own ID.");
   const stream = await getMedia(video); if (!stream) return; addPrivateTile(peer.id, stream, true); privateChatConnection(remoteId); status("Calling " + remoteId + "…"); wirePrivateCall(peer.call(remoteId, stream, { metadata: { kind: "private", video } }));
 }
-async function answerPrivate() { if (!pendingPrivate) return; if (inGroupCall) return status("End the group call before answering a private call."); const stream = await getMedia(Boolean(pendingPrivate.metadata?.video !== false)); if (!stream) return; addPrivateTile(peer.id, stream, true); const call = pendingPrivate; pendingPrivate = null; hide("privateIncoming"); call.answer(stream); wirePrivateCall(call); }
+async function answerPrivate() { if (!pendingPrivate) return; if (inGroupCall) return status("End the group call before answering a private call."); const stream = await getMedia(Boolean(pendingPrivate.metadata?.video !== false)); if (!stream) return; addPrivateTile(peer.id, stream, true); const call = pendingPrivate; pendingPrivate = null; hide("privateIncoming"); wirePrivateCall(call); call.answer(stream); }
 
 function randomCode() {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -647,8 +647,8 @@ function initPeer() {
       room.video = Boolean(call.metadata.video);
       if (inGroupCall && localStream) {
         if (groupCalls.has(call.peer)) return call.close();
-        call.answer(localStream);
         wireGroupCall(call);
+        call.answer(localStream);
         return;
       }
       if (pendingGroupCalls.some((pending) => pending.peer === call.peer)) return call.close();
@@ -672,7 +672,7 @@ async function answerIncomingGroup() {
   const stream = await getMedia(room.video); if (!stream) { matchingCalls.forEach((call) => call.close()); return; }
   inGroupCall = true;
   addTile(peer.id, stream, true); hide("answerGroupBtn"); hide("startVideoBtn"); hide("startAudioBtn"); show("groupCallControls"); show("endGroupBtn"); updateMediaControls(); $("groupCallStatus").textContent = "Connected to group call.";
-  matchingCalls.forEach((call) => { call.answer(stream); wireGroupCall(call); });
+  matchingCalls.forEach((call) => { wireGroupCall(call); call.answer(stream); });
   // Connect only to room members that did not already invite us.
   connectGroupPeers();
 }
