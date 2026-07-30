@@ -4,159 +4,167 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="A lightweight PeerJS app for private calls, temporary group rooms, chat, and peer-to-peer file sharing.">
-  <title>Peer Call</title>
+  <title data-i18n="appTitle">Peer Call</title>
   <link rel="stylesheet" href="css/style.css">
   <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 </head>
-<body>
+<body data-theme="dark">
   <main class="app">
     <header class="app-header">
-      <div>
-        <p class="eyebrow">Browser WebRTC</p>
-        <h1>Peer Call</h1>
-        <p class="subtitle">Private calls, temporary rooms, chat, and file sharing — no sign-up needed.</p>
+      <div class="app-title-block">
+        <p class="eyebrow" data-i18n="eyebrow">Browser WebRTC</p>
+        <h1 data-i18n="appTitle">Peer Call</h1>
+        <p class="subtitle" data-i18n="subtitle">Private calls, temporary rooms, chat, and file sharing — no sign-up needed.</p>
       </div>
-      <p id="status" class="status-pill" role="status" aria-live="polite">Connecting…</p>
-      <button id="profileBtn" class="btn small" type="button">Profile</button>
+      <div class="header-controls">
+        <p id="status" class="status-pill" role="status" aria-live="polite" data-i18n="connecting">Connecting…</p>
+        <div class="header-btns">
+          <button id="langBtn" class="btn small ghost" type="button" title="Change language">🌐 EN</button>
+          <button id="themeBtn" class="btn small ghost" type="button" title="Toggle theme" aria-label="Toggle theme">🌙</button>
+          <button id="profileBtn" class="btn small" type="button" data-i18n="profile">Profile</button>
+        </div>
+      </div>
     </header>
 
     <section id="homeView" class="chooser" aria-label="Choose how to connect">
       <button id="friendChoice" class="choice" type="button">
-        <strong>Call a Friend</strong>
-        <span>Share your Peer ID for one-to-one audio, video, chat, and files.</span>
+        <strong data-i18n="callFriendTitle">Call a Friend</strong>
+        <span data-i18n="callFriendDesc">Share your Peer ID for one-to-one audio, video, chat, and files.</span>
       </button>
       <button id="roomChoice" class="choice" type="button">
-        <strong>Join a Room</strong>
-        <span>Create or join a temporary group room with audio, video, chat, and files.</span>
+        <strong data-i18n="joinRoomTitle">Join a Room</strong>
+        <span data-i18n="joinRoomDesc">Create or join a temporary group room with audio, video, chat, and files.</span>
       </button>
     </section>
 
     <section id="friendView" class="view hidden" aria-labelledby="friendTitle">
       <div class="view-title">
-        <h2 id="friendTitle">Call a Friend</h2>
-        <button class="btn small back-btn" type="button">Back</button>
+        <h2 id="friendTitle" data-i18n="callFriendTitle">Call a Friend</h2>
+        <button class="btn small back-btn" type="button" data-i18n="back">Back</button>
       </div>
 
       <div id="privateTiles" class="tiles private-tiles" aria-label="Private call video"></div>
 
       <div class="panel">
-        <div class="row">
-          <span class="label">Your ID</span>
+        <div class="row wrap">
+          <span class="label" data-i18n="yourId">Your ID</span>
           <code id="myId" class="id">—</code>
-          <button id="copyBtn" class="btn small" type="button">Copy</button>
+          <button id="copyBtn" class="btn small" type="button" data-i18n="copy">Copy</button>
         </div>
-        <div class="row">
+        <div class="row wrap">
           <label for="peerId" class="sr-only">Friend's Peer ID</label>
-          <input id="peerId" class="input" placeholder="Enter friend's ID" autocomplete="off" spellcheck="false">
-          <button id="callBtn" class="btn primary" type="button">Video Call</button>
-          <button id="audioCallBtn" class="btn" type="button">Audio Call</button>
+          <input id="peerId" class="input" data-i18n-placeholder="enterFriendId" placeholder="Enter friend's ID" autocomplete="off" spellcheck="false">
+          <button id="callBtn" class="btn primary" type="button" data-i18n="videoCall">Video Call</button>
+          <button id="audioCallBtn" class="btn" type="button" data-i18n="audioCall">Audio Call</button>
         </div>
         <div id="privateIncoming" class="row hidden">
-          <span class="label">Incoming private call</span>
-          <button id="answerPrivateBtn" class="btn primary" type="button">Answer</button>
+          <span class="label" data-i18n="incomingPrivate">Incoming private call</span>
+          <button id="answerPrivateBtn" class="btn primary" type="button" data-i18n="answer">Answer</button>
         </div>
         <div id="privateCallControls" class="call-controls hidden" aria-label="Private call controls">
-          <button id="privateMuteBtn" class="btn" type="button" aria-pressed="false">Mute mic</button>
-          <button id="privateCameraBtn" class="btn" type="button" aria-pressed="false">Turn camera off</button>
+          <button id="privateMuteBtn" class="btn" type="button" aria-pressed="false" data-i18n="muteMic">Mute mic</button>
+          <button id="privateCameraBtn" class="btn" type="button" aria-pressed="false" data-i18n="turnCameraOff">Turn camera off</button>
+          <button id="privateShareBtn" class="btn hidden" type="button" data-i18n="shareScreen">Share screen</button>
         </div>
-        <button id="privateHangupBtn" class="btn danger hidden" type="button">Hang Up</button>
+        <button id="privateHangupBtn" class="btn danger hidden" type="button" data-i18n="hangUp">Hang Up</button>
       </div>
 
       <section class="panel chat-panel" aria-labelledby="privateChatTitle">
         <div class="chat-heading">
           <div>
-            <h3 id="privateChatTitle">Private chat</h3>
-            <p id="privateChatStatus" class="muted">Enter a friend’s ID to start chatting.</p>
+            <h3 id="privateChatTitle" data-i18n="privateChat">Private chat</h3>
+            <p id="privateChatStatus" class="muted" data-i18n="enterFriendIdStart">Enter a friend's ID to start chatting.</p>
           </div>
-          <button id="clearPrivateChat" class="btn small" type="button">Clear</button>
+          <button id="clearPrivateChat" class="btn small" type="button" data-i18n="clear">Clear</button>
         </div>
         <div id="privateMessages" class="messages" role="log" aria-live="polite">
-          <p class="empty">No messages yet</p>
+          <p class="empty" data-i18n="noMessages">No messages yet</p>
         </div>
         <form id="privateChatForm" class="chat-form">
           <label for="privateMessage" class="sr-only">Private message</label>
-          <input id="privateMessage" class="input" maxlength="1000" placeholder="Type a message…" autocomplete="off">
+          <input id="privateMessage" class="input" maxlength="1000" data-i18n-placeholder="typeMessage" placeholder="Type a message…" autocomplete="off">
           <label class="btn small file-label" title="Send file" aria-label="Send file">
             <input id="privateFile" type="file" class="file-input" onchange="handlePrivateFile(this)">
             <span aria-hidden="true">📎</span>
           </label>
-          <button class="btn primary" type="submit">Send</button>
+          <button class="btn primary" type="submit" data-i18n="send">Send</button>
         </form>
       </section>
     </section>
 
     <section id="roomView" class="view hidden" aria-labelledby="roomTitle">
       <div class="view-title">
-        <h2 id="roomTitle">Group Room</h2>
-        <button id="leaveRoomBtn" class="btn small hidden" type="button">Leave Room</button>
-        <button class="btn small back-btn" type="button">Back</button>
+        <h2 id="roomTitle" data-i18n="groupRoom">Group Room</h2>
+        <button id="leaveRoomBtn" class="btn small hidden" type="button" data-i18n="leaveRoom">Leave Room</button>
+        <button class="btn small back-btn" type="button" data-i18n="back">Back</button>
       </div>
 
       <div id="roomLobby" class="panel">
-        <p class="muted">Rooms are temporary and exist only while their creator stays online.</p>
-        <button id="createRoomBtn" class="btn primary" type="button">Create a Room</button>
-        <div class="divider">or</div>
-        <div class="row">
+        <p class="muted" data-i18n="roomNote">Rooms are temporary and exist only while their creator stays online.</p>
+        <button id="createRoomBtn" class="btn primary" type="button" data-i18n="createRoom">Create a Room</button>
+        <div class="divider" data-i18n="or">or</div>
+        <div class="row wrap">
           <label for="roomCodeInput" class="sr-only">Room code</label>
-          <input id="roomCodeInput" class="input room-code" maxlength="6" placeholder="6-character code" autocomplete="off" spellcheck="false">
-          <button id="joinRoomBtn" class="btn" type="button">Join Room</button>
+          <input id="roomCodeInput" class="input room-code" maxlength="6" data-i18n-placeholder="roomCodePh" placeholder="6-character code" autocomplete="off" spellcheck="false">
+          <button id="joinRoomBtn" class="btn" type="button" data-i18n="joinRoom">Join Room</button>
         </div>
       </div>
 
       <div id="roomActive" class="hidden">
         <div class="panel room-summary">
-          <div>
-            <span class="label">Room code</span>
+          <div class="room-code-line">
+            <span class="label" data-i18n="roomCode">Room code</span>
             <code id="roomCode" class="id">—</code>
           </div>
-          <button id="copyRoomBtn" class="btn small" type="button">Copy code</button>
+          <button id="copyRoomBtn" class="btn small" type="button" data-i18n="copyCode">Copy code</button>
           <p id="participantCount" class="muted">1 participant online</p>
         </div>
 
         <!-- Live Participants List -->
         <div class="panel participants-panel">
           <div class="chat-heading">
-            <h3>Live Participants</h3>
+            <h3 data-i18n="liveParticipants">Live Participants</h3>
             <span id="liveCount" class="muted">1 online</span>
           </div>
           <div id="participantsList" class="participants-list"></div>
         </div>
 
         <section class="panel" aria-labelledby="groupCallTitle">
-          <h3 id="groupCallTitle" class="section-title">Group call</h3>
+          <h3 id="groupCallTitle" class="section-title" data-i18n="groupCall">Group call</h3>
           <div class="call-actions">
-            <button id="startVideoBtn" class="btn primary" type="button">Start Video Call</button>
-            <button id="startAudioBtn" class="btn" type="button">Start Audio Call</button>
-            <button id="answerGroupBtn" class="btn primary hidden" type="button">Answer Group Call</button>
-            <button id="endGroupBtn" class="btn danger hidden" type="button">End Call for Everyone</button>
+            <button id="startVideoBtn" class="btn primary" type="button" data-i18n="startVideoCall">Start Video Call</button>
+            <button id="startAudioBtn" class="btn" type="button" data-i18n="startAudioCall">Start Audio Call</button>
+            <button id="answerGroupBtn" class="btn primary hidden" type="button" data-i18n="answerGroup">Answer Group Call</button>
+            <button id="endGroupBtn" class="btn danger hidden" type="button" data-i18n="endCallEveryone">End Call for Everyone</button>
           </div>
           <div id="groupCallControls" class="call-controls hidden" aria-label="Group call controls">
-            <button id="groupMuteBtn" class="btn" type="button" aria-pressed="false">Mute mic</button>
-            <button id="groupCameraBtn" class="btn" type="button" aria-pressed="false">Turn camera off</button>
+            <button id="groupMuteBtn" class="btn" type="button" aria-pressed="false" data-i18n="muteMic">Mute mic</button>
+            <button id="groupCameraBtn" class="btn" type="button" aria-pressed="false" data-i18n="turnCameraOff">Turn camera off</button>
+            <button id="groupShareBtn" class="btn hidden" type="button" data-i18n="shareScreen">Share screen</button>
           </div>
-          <p id="groupCallStatus" class="muted">No group call is active.</p>
+          <p id="groupCallStatus" class="muted" data-i18n="noGroupCall">No group call is active.</p>
           <div id="participantTiles" class="tiles" aria-label="Group call participants"></div>
         </section>
 
         <section class="panel chat-panel" aria-labelledby="roomChatTitle">
           <div class="chat-heading">
             <div>
-              <h3 id="roomChatTitle">Room chat</h3>
-              <p class="muted">Messages are shared only with current room participants.</p>
+              <h3 id="roomChatTitle" data-i18n="roomChat">Room chat</h3>
+              <p class="muted" data-i18n="roomChatNote">Messages are shared only with current room participants.</p>
             </div>
-            <button id="clearRoomChat" class="btn small" type="button">Clear</button>
+            <button id="clearRoomChat" class="btn small" type="button" data-i18n="clear">Clear</button>
           </div>
           <div id="roomMessages" class="messages" role="log" aria-live="polite">
-            <p class="empty">No messages yet</p>
+            <p class="empty" data-i18n="noMessages">No messages yet</p>
           </div>
           <form id="roomChatForm" class="chat-form">
             <label for="roomMessage" class="sr-only">Room message</label>
-            <input id="roomMessage" class="input" maxlength="1000" placeholder="Message the room…" autocomplete="off">
+            <input id="roomMessage" class="input" maxlength="1000" data-i18n-placeholder="messageRoom" placeholder="Message the room…" autocomplete="off">
             <label class="btn small file-label" title="Send file" aria-label="Send file">
               <input id="roomFile" type="file" class="file-input" onchange="handleRoomFile(this)">
               <span aria-hidden="true">📎</span>
             </label>
-            <button class="btn primary" type="submit">Send</button>
+            <button class="btn primary" type="submit" data-i18n="send">Send</button>
           </form>
         </section>
       </div>
@@ -164,11 +172,73 @@
 
     <div id="incomingModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="incomingTitle">
       <div class="panel">
-        <h2 id="incomingTitle">Incoming group call</h2>
-        <p id="incomingText" class="muted">Join the call?</p>
+        <h2 id="incomingTitle" data-i18n="incomingGroupCall">Incoming group call</h2>
+        <p id="incomingText" class="muted" data-i18n="joinCallQ">Join the call?</p>
         <div class="row">
-          <button id="modalAnswerBtn" class="btn primary" type="button">Answer</button>
-          <button id="modalDeclineBtn" class="btn" type="button">Not now</button>
+          <button id="modalAnswerBtn" class="btn primary" type="button" data-i18n="answer">Answer</button>
+          <button id="modalDeclineBtn" class="btn" type="button" data-i18n="notNow">Not now</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="profileModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="profileTitle">
+      <div class="panel profile-panel">
+        <h2 id="profileTitle" data-i18n="yourProfile">Your Profile</h2>
+        <p class="muted" data-i18n="profileNote">Set your display name, initials color and emoji avatar. Saved on this device and shared with peers you connect to.</p>
+
+        <div class="profile-preview-row">
+          <div id="profileAvatarPreview" class="avatar big">👤</div>
+          <div class="profile-preview-meta">
+            <strong id="profileNamePreview">User</strong>
+            <small class="muted" data-i18n="profilePreviewHelp">This is how others will see you.</small>
+          </div>
+        </div>
+
+        <label for="profileName" class="label" data-i18n="name">Name</label>
+        <input id="profileName" class="input" type="text" maxlength="24" data-i18n-placeholder="yourNamePh" placeholder="Your name" autocomplete="off">
+
+        <label for="profileAvatar" class="label" data-i18n="avatarEmoji">Avatar (emoji)</label>
+        <input id="profileAvatar" class="input" type="text" maxlength="4" placeholder="👤" autocomplete="off">
+
+        <div class="avatar-picker" aria-label="Quick avatar picks">
+          <button type="button" class="avatar-pick" data-emoji="👤">👤</button>
+          <button type="button" class="avatar-pick" data-emoji="😀">😀</button>
+          <button type="button" class="avatar-pick" data-emoji="😎">😎</button>
+          <button type="button" class="avatar-pick" data-emoji="🤖">🤖</button>
+          <button type="button" class="avatar-pick" data-emoji="🦊">🦊</button>
+          <button type="button" class="avatar-pick" data-emoji="🐼">🐼</button>
+          <button type="button" class="avatar-pick" data-emoji="🦁">🦁</button>
+          <button type="button" class="avatar-pick" data-emoji="🐱">🐱</button>
+          <button type="button" class="avatar-pick" data-emoji="🐶">🐶</button>
+          <button type="button" class="avatar-pick" data-emoji="🦄">🦄</button>
+          <button type="button" class="avatar-pick" data-emoji="🎧">🎧</button>
+          <button type="button" class="avatar-pick" data-emoji="🚀">🚀</button>
+          <button type="button" class="avatar-pick" data-emoji="⭐">⭐</button>
+          <button type="button" class="avatar-pick" data-emoji="🔥">🔥</button>
+          <button type="button" class="avatar-pick" data-emoji="💎">💎</button>
+        </div>
+
+        <label class="label" data-i18n="profileColor">Color (for initials)</label>
+        <div class="color-picker" id="colorPicker" aria-label="Color choices"></div>
+
+        <label class="row-inline">
+          <input type="checkbox" id="profileUseInitials">
+          <span data-i18n="useInitialsAvatar">Use colored initials instead of emoji in participant list &amp; call tiles</span>
+        </label>
+
+        <div class="row end-row">
+          <button id="saveProfileBtn" class="btn primary" type="button" data-i18n="save">Save</button>
+          <button id="closeProfileBtn" class="btn" type="button" data-i18n="cancel">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="langModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="langTitle">
+      <div class="panel">
+        <h2 id="langTitle" data-i18n="chooseLanguage">Choose language</h2>
+        <div class="lang-list" id="langList"></div>
+        <div class="row end-row">
+          <button id="closeLangBtn" class="btn" type="button" data-i18n="close">Close</button>
         </div>
       </div>
     </div>
