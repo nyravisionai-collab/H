@@ -336,7 +336,7 @@ function endPrivateCall() {
   const call = privateCall;
   privateCall = null;
   if (call) call.close();
-  $("privateTiles").replaceChildren();
+  clearMediaTiles("privateTiles");
   if (!inGroupCall) stopMedia();
   hide("privateCallControls");
   hide("privateHangupBtn");
@@ -352,7 +352,7 @@ function wirePrivateCall(call) {
   show("privateHangupBtn");
   updateMediaControls();
   call.on("stream", (stream) => addPrivateTile(call.peer, stream));
-  call.on("close", () => { $("privateTiles").replaceChildren(); if (privateCall === call) endPrivateCall(); });
+  call.on("close", () => { clearMediaTiles("privateTiles"); if (privateCall === call) endPrivateCall(); });
   call.on("error", () => endPrivateCall());
 }
 async function startPrivateCall(video = true) {
@@ -509,7 +509,14 @@ function toggleCamera() {
 }
 
 function safeTileId(prefix, id) { return prefix + String(id || "unknown").replace(/[^a-z0-9_-]/gi, "_"); }
-function hasVisibleVideo(stream) { return liveTracks(stream, "video").some((track) => track.enabled && !track.muted); }
+
+function hasVisibleVideo(stream) {
+  // Do not use MediaStreamTrack.muted here. Remote WebRTC video tracks often
+  // start in a muted state until the first frame arrives; if we hide the <video>
+  // at that moment and never re-check, the other person's video appears stuck as
+  // "Audio only" even though video is flowing.
+  return liveTracks(stream, "video").some((track) => track.enabled);
+}
 
 function updateTileVisual(tile, stream, local) {
   const visibleVideo = hasVisibleVideo(stream);
@@ -518,8 +525,35 @@ function updateTileVisual(tile, stream, local) {
   tile.classList.toggle("audio", !visibleVideo);
   const title = tile.querySelector(".audio-title");
   const detail = tile.querySelector(".audio-detail");
-  if (title) title.textContent = hasVideoTrack ? (local ? "Camera off" : "Video paused") : "Audio only";
+  if (title) title.textContent = hasVideoTrack ? (local ? "Camera off" : "Waiting for video…") : "Audio only";
   if (detail) detail.textContent = local ? (micMuted ? "Your microphone is muted" : "Your microphone is connected") : "Audio stream connected";
+}
+
+function bindTileMediaEvents(tile, stream, local) {
+  if (typeof tile._cleanupMediaTile === "function") tile._cleanupMediaTile();
+  const video = tile.querySelector("video");
+  const listeners = [];
+  const listen = (target, event, handler) => {
+    target.addEventListener(event, handler);
+    listeners.push(() => target.removeEventListener(event, handler));
+  };
+  const refresh = () => updateTileVisual(tile, stream, local);
+  const tryPlay = () => video.play().catch(() => {});
+
+  ["loadedmetadata", "loadeddata", "canplay", "playing", "resize"].forEach((event) => {
+    listen(video, event, () => { refresh(); tryPlay(); });
+  });
+  if (typeof stream.addEventListener === "function") {
+    ["addtrack", "removetrack"].forEach((event) => listen(stream, event, refresh));
+  }
+  (stream.getTracks() || []).forEach((track) => {
+    ["mute", "unmute", "ended"].forEach((event) => listen(track, event, refresh));
+  });
+
+  tile._cleanupMediaTile = () => {
+    listeners.splice(0).forEach((cleanup) => cleanup());
+    tile._cleanupMediaTile = null;
+  };
 }
 
 function createMediaTile(containerId, tileId, labelText) {
@@ -547,6 +581,7 @@ function setTileStream(tile, stream, local) {
   const video = tile.querySelector("video");
   video.muted = local;
   video.srcObject = stream;
+  bindTileMediaEvents(tile, stream, local);
   video.play().catch(() => {});
   updateTileVisual(tile, stream, local);
 }
@@ -567,7 +602,9 @@ function addTile(id, stream, local) {
   const tile = createMediaTile("participantTiles", safeTileId("tile-", id), local ? "You" : "Participant");
   setTileStream(tile, stream, local);
 }
-function removeTile(id) { $(safeTileId("tile-", id))?.remove(); }
+function cleanupMediaTile(tile) { if (typeof tile?._cleanupMediaTile === "function") tile._cleanupMediaTile(); }
+function clearMediaTiles(containerId) { const container = $(containerId); container?.querySelectorAll(".tile").forEach(cleanupMediaTile); container?.replaceChildren(); }
+function removeTile(id) { const tile = $(safeTileId("tile-", id)); cleanupMediaTile(tile); tile?.remove(); }
 function connectGroupPeers() { if (!room || !localStream) return; memberIds().forEach((id) => { if (id === peer.id || groupCalls.has(id)) return; const call = peer.call(id, localStream, { metadata: { kind: "group", room: room.code, video: room.video } }); wireGroupCall(call); }); }
 function wireGroupCall(call) { if (groupCalls.has(call.peer)) { call.close(); return; } groupCalls.set(call.peer, call); call.on("stream", (stream) => addTile(call.peer, stream, false)); call.on("close", () => { groupCalls.delete(call.peer); removeTile(call.peer); }); call.on("error", () => { groupCalls.delete(call.peer); removeTile(call.peer); }); }
 function offerGroupAnswer() {
@@ -615,7 +652,7 @@ function finishGroupCall(resetState = true) {
   groupCalls.forEach((call) => call.close());
   groupCalls.clear();
   inGroupCall = false;
-  $("participantTiles").replaceChildren();
+  clearMediaTiles("participantTiles");
   if (!privateCall) stopMedia();
   if (resetState && room) room.callActive = false;
   hide("groupCallControls");
