@@ -17,6 +17,7 @@
         <p class="subtitle">Private calls, temporary rooms, chat, and file sharing — no sign-up needed.</p>
       </div>
       <p id="status" class="status-pill" role="status" aria-live="polite">Connecting…</p>
+      <button id="profileBtn" class="btn small" type="button">Profile</button>
     </header>
 
     <section id="homeView" class="chooser" aria-label="Choose how to connect">
@@ -110,6 +111,15 @@
           </div>
           <button id="copyRoomBtn" class="btn small" type="button">Copy code</button>
           <p id="participantCount" class="muted">1 participant online</p>
+        </div>
+
+        <!-- Live Participants List -->
+        <div class="panel participants-panel">
+          <div class="chat-heading">
+            <h3>Live Participants</h3>
+            <span id="liveCount" class="muted">1 online</span>
+          </div>
+          <div id="participantsList" class="participants-list"></div>
         </div>
 
         <section class="panel" aria-labelledby="groupCallTitle">

@@ -5,8 +5,40 @@ const statusEl = $("status"), myIdEl = $("myId");
 let peer, localStream = null, privateCall = null, pendingPrivate = null;
 let privateConnection = null, room = null, pendingGroupCalls = [], groupCalls = new Map();
 let reconnectAttempts = 0, roomJoinTimer = null, inGroupCall = false;
+let myProfile = { name: "", avatar: "👤" };
 
 function status(text) { statusEl.textContent = text; }
+
+function loadProfile() {
+  try {
+    const saved = localStorage.getItem(\"peerProfile\");
+    if (saved) myProfile = JSON.parse(saved);
+  } catch (_) {}
+  if (!myProfile.name) myProfile.name = \"User\" + Math.floor(Math.random() * 9000 + 1000);
+}
+
+function saveProfile() {
+  localStorage.setItem(\"peerProfile\", JSON.stringify(myProfile));
+}
+
+function updateParticipantsList() {
+  const container = $(\"participantsList\");
+  if (!container || !room) return;
+  container.innerHTML = \"\";
+  const all = allRoomIds();
+  $(\"liveCount\").textContent = all.length + \" online\";
+  all.forEach(id => {
+    const pill = document.createElement(\"div\");
+    pill.className = \"participant-pill\" + (id === peer.id ? \" you\" : \"\");
+    const avatar = document.createElement(\"div\");
+    avatar.className = \"avatar\";
+    avatar.textContent = id === peer.id ? myProfile.avatar : \"👥\";
+    const name = document.createElement(\"span\");
+    name.textContent = id === peer.id ? myProfile.name : \"Participant\";
+    pill.append(avatar, name);
+    container.appendChild(pill);
+  });
+}
 function show(id) { $(id).classList.remove("hidden"); }
 function hide(id) { $(id).classList.add("hidden"); }
 function view(name) { ["homeView", "friendView", "roomView"].forEach((id) => $(id).classList.toggle("hidden", id !== name)); }
@@ -793,3 +825,19 @@ async function handleRoomFile(input) {
   input.value = "";
 }
 initPeer();
+
+// Profile handlers
+$(\"profileBtn\").onclick = () => {
+  $(\"profileName\").value = myProfile.name;
+  $(\"profileAvatar\").value = myProfile.avatar;
+  show(\"profileModal\");
+};
+$(\"closeProfileBtn\").onclick = () => hide(\"profileModal\");
+$(\"saveProfileBtn\").onclick = () => {
+  myProfile.name = safeText($(\"profileName\").value) || myProfile.name;
+  myProfile.avatar = $(\"profileAvatar\").value || myProfile.avatar;
+  saveProfile();
+  hide(\"profileModal\");
+  updateParticipantsList();
+  status(\"Profile saved!\");
+};
