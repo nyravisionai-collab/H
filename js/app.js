@@ -12,6 +12,15 @@ let myProfile = { name: "", avatar: "👤", color: "#5b8cff", useInitials: false
 const remoteProfiles = new Map(); // peerId -> { name, avatar, color, useInitials }
 let screenStream = null; // active screen-share MediaStream if any
 
+const FRIEND_LOBBY_ID = "nyravisionai-h-live-friends-v1";
+let friendLobbyHostPeer = null;
+let friendLobbyHostConnection = null;
+let friendLobbyRetryTimer = null;
+let friendLobbyState = "idle"; // idle | starting-host | host | connecting-member | member
+const friendLobbyMembers = new Map(); // host mode: peerId -> DataConnection
+const friendLobbyRoster = new Map(); // peerId -> sanitized profile
+let selectedFriendId = "";
+
 /* -------------------------------------------------------------------------- */
 /* i18n                                                                       */
 /* -------------------------------------------------------------------------- */
@@ -24,13 +33,25 @@ const STRINGS = {
     connecting: "Connecting…",
     profile: "Profile",
     callFriendTitle: "Call a Friend",
-    callFriendDesc: "Share your Peer ID for one-to-one audio, video, chat, and files.",
+    callFriendDesc: "See live users by username and start a one-to-one audio, video, chat, or file session.",
     joinRoomTitle: "Join a Room",
     joinRoomDesc: "Create or join a temporary group room with audio, video, chat, and files.",
     back: "Back",
-    yourId: "Your ID",
+    yourId: "Your username",
+    yourUsername: "Your username",
+    selectedFriend: "Selected friend",
+    selectFriendPrompt: "Choose a live user below.",
+    onlineFriends: "Live users",
+    friendLobbyConnecting: "Finding live users…",
+    friendLobbyReady: "{n} live user{s} found.",
+    friendLobbyOffline: "Live user list is reconnecting…",
+    noOnlineFriends: "No other live users yet. Ask a friend to open the app.",
+    liveNow: "Live now",
+    refresh: "Refresh",
+    select: "Select",
+    privateChatWith: "Private chat with {name}.",
     copy: "Copy",
-    enterFriendId: "Enter friend's ID",
+    enterFriendId: "Choose a live user",
     videoCall: "Video Call",
     audioCall: "Audio Call",
     incomingPrivate: "Incoming private call",
@@ -44,7 +65,7 @@ const STRINGS = {
     stopShare: "Stop sharing",
     hangUp: "Hang Up",
     privateChat: "Private chat",
-    enterFriendIdStart: "Enter a friend's ID to start chatting.",
+    enterFriendIdStart: "Select a live user to start chatting.",
     clear: "Clear",
     noMessages: "No messages yet",
     typeMessage: "Type a message…",
@@ -91,11 +112,11 @@ const STRINGS = {
     fileTooBig: "File is too large (max {size}).",
     fileUnsupported: "Camera/microphone access is unsupported in this browser.",
     micDenied: "Microphone/camera permission was denied or is unavailable.",
-    friendIdEmpty: "Enter a friend's ID first.",
-    ownId: "You cannot call your own ID.",
+    friendIdEmpty: "Select a live user first.",
+    ownId: "You cannot call yourself.",
     endGroupFirst: "End the group call before starting a private call.",
     endPrivateFirst: "End the private call before starting a group call.",
-    calling: "Calling {id}…",
+    calling: "Calling {name}…",
     privateEnded: "Private call ended.",
     invalidCode: "Enter a valid 6-character room code.",
     stillConnecting: "Still connecting — please try again.",
@@ -151,13 +172,25 @@ const STRINGS = {
     connecting: "કનેક્ટ થઈ રહ્યું છે…",
     profile: "પ્રોફાઇલ",
     callFriendTitle: "મિત્રને કૉલ કરો",
-    callFriendDesc: "એક-થી-એક ઑડિઓ, વીડિયો, ચેટ અને ફાઇલો માટે તમારો Peer ID શેર કરો.",
+    callFriendDesc: "લાઈવ યુઝરનેમ જુઓ અને એક-થી-એક ઑડિઓ, વીડિયો, ચેટ અથવા ફાઇલ સેશન શરૂ કરો.",
     joinRoomTitle: "રૂમમાં જોડાઓ",
     joinRoomDesc: "ઑડિઓ, વીડિયો, ચેટ અને ફાઇલો સાથે અસ્થાયી જૂથ રૂમ બનાવો અથવા જોડાઓ.",
     back: "પાછા",
-    yourId: "તમારો ID",
+    yourId: "તમારું યુઝરનેમ",
+    yourUsername: "તમારું યુઝરનેમ",
+    selectedFriend: "પસંદ કરેલો મિત્ર",
+    selectFriendPrompt: "નીચેમાંથી લાઈવ યુઝર પસંદ કરો.",
+    onlineFriends: "લાઈવ યુઝર્સ",
+    friendLobbyConnecting: "લાઈવ યુઝર્સ શોધી રહ્યા છીએ…",
+    friendLobbyReady: "{n} લાઈવ યુઝર મળ્યા.",
+    friendLobbyOffline: "લાઈવ યુઝર યાદી ફરી કનેક્ટ થઈ રહી છે…",
+    noOnlineFriends: "હજુ કોઈ બીજો લાઈવ યુઝર નથી. મિત્રને એપ ખોલવા કહો.",
+    liveNow: "હમણાં લાઈવ",
+    refresh: "રીફ્રેશ",
+    select: "પસંદ કરો",
+    privateChatWith: "{name} સાથે ખાનગી ચેટ.",
     copy: "કૉપિ",
-    enterFriendId: "મિત્રનો ID દાખલ કરો",
+    enterFriendId: "લાઈવ યુઝર પસંદ કરો",
     videoCall: "વીડિયો કૉલ",
     audioCall: "ઑડિઓ કૉલ",
     incomingPrivate: "આવતી ખાનગી કૉલ",
@@ -171,7 +204,7 @@ const STRINGS = {
     stopShare: "શેર કરવાનું બંધ કરો",
     hangUp: "કૉલ કાપો",
     privateChat: "ખાનગી ચેટ",
-    enterFriendIdStart: "ચેટ શરૂ કરવા મિત્રનો ID દાખલ કરો.",
+    enterFriendIdStart: "ચેટ શરૂ કરવા લાઈવ યુઝર પસંદ કરો.",
     clear: "સાફ કરો",
     noMessages: "હજુ સુધી કોઈ સંદેશ નથી",
     typeMessage: "સંદેશ લખો…",
@@ -218,11 +251,11 @@ const STRINGS = {
     fileTooBig: "ફાઇલ ઘણી મોટી છે (મહત્તમ {size}).",
     fileUnsupported: "આ બ્રાઉઝરમાં કૅમેરા/માઇક્રોફોન સપોર્ટેડ નથી.",
     micDenied: "માઇક્રોફોન/કૅમેરાની પરવાનગી નકારી કાઢવામાં આવી.",
-    friendIdEmpty: "પહેલા મિત્રનો ID દાખલ કરો.",
-    ownId: "તમે તમારા પોતાના ID પર કૉલ ન કરી શકો.",
+    friendIdEmpty: "પહેલા લાઈવ યુઝર પસંદ કરો.",
+    ownId: "તમે પોતાને કૉલ ન કરી શકો.",
     endGroupFirst: "ખાનગી કૉલ શરૂ કરતા પહેલા જૂથ કૉલ સમાપ્ત કરો.",
     endPrivateFirst: "જૂથ કૉલ શરૂ કરતા પહેલા ખાનગી કૉલ સમાપ્ત કરો.",
-    calling: "{id} ને કૉલ કરી રહ્યા છીએ…",
+    calling: "{name} ને કૉલ કરી રહ્યા છીએ…",
     privateEnded: "ખાનગી કૉલ સમાપ્ત.",
     invalidCode: "માન્ય 6-અક્ષરનો રૂમ કોડ દાખલ કરો.",
     stillConnecting: "હજી કનેક્ટ થઈ રહ્યું છે — ફરી પ્રયાસ કરો.",
@@ -278,13 +311,25 @@ const STRINGS = {
     connecting: "कनेक्ट हो रहा है…",
     profile: "प्रोफ़ाइल",
     callFriendTitle: "दोस्त को कॉल करें",
-    callFriendDesc: "एक-से-एक ऑडियो, वीडियो, चैट और फ़ाइलों के लिए अपनी Peer ID साझा करें.",
+    callFriendDesc: "लाइव यूज़रनेम देखें और एक-से-एक ऑडियो, वीडियो, चैट या फ़ाइल सेशन शुरू करें.",
     joinRoomTitle: "रूम में शामिल हों",
     joinRoomDesc: "ऑडियो, वीडियो, चैट और फ़ाइलों के साथ अस्थायी समूह रूम बनाएँ या उसमें शामिल हों.",
     back: "वापस",
-    yourId: "आपकी ID",
+    yourId: "आपका यूज़रनेम",
+    yourUsername: "आपका यूज़रनेम",
+    selectedFriend: "चुना हुआ दोस्त",
+    selectFriendPrompt: "नीचे से लाइव यूज़र चुनें.",
+    onlineFriends: "लाइव यूज़र",
+    friendLobbyConnecting: "लाइव यूज़र खोज रहे हैं…",
+    friendLobbyReady: "{n} लाइव यूज़र मिले.",
+    friendLobbyOffline: "लाइव यूज़र सूची फिर से कनेक्ट हो रही है…",
+    noOnlineFriends: "अभी कोई दूसरा लाइव यूज़र नहीं है. किसी दोस्त से ऐप खोलने को कहें.",
+    liveNow: "अभी लाइव",
+    refresh: "रीफ्रेश",
+    select: "चुनें",
+    privateChatWith: "{name} के साथ निजी चैट.",
     copy: "कॉपी",
-    enterFriendId: "दोस्त की ID दर्ज करें",
+    enterFriendId: "लाइव यूज़र चुनें",
     videoCall: "वीडियो कॉल",
     audioCall: "ऑडियो कॉल",
     incomingPrivate: "इनकमिंग निजी कॉल",
@@ -298,7 +343,7 @@ const STRINGS = {
     stopShare: "शेयर करना बंद करें",
     hangUp: "कॉल काटें",
     privateChat: "निजी चैट",
-    enterFriendIdStart: "चैट शुरू करने के लिए दोस्त की ID दर्ज करें.",
+    enterFriendIdStart: "चैट शुरू करने के लिए लाइव यूज़र चुनें.",
     clear: "साफ़ करें",
     noMessages: "अभी कोई संदेश नहीं",
     typeMessage: "संदेश लिखें…",
@@ -345,11 +390,11 @@ const STRINGS = {
     fileTooBig: "फ़ाइल बहुत बड़ी है (अधिकतम {size}).",
     fileUnsupported: "इस ब्राउज़र में कैमरा/माइक्रोफ़ोन समर्थित नहीं है.",
     micDenied: "माइक्रोफ़ोन/कैमरा की अनुमति अस्वीकृत या अनुपलब्ध है.",
-    friendIdEmpty: "पहले दोस्त की ID दर्ज करें.",
-    ownId: "आप अपनी खुद की ID को कॉल नहीं कर सकते.",
+    friendIdEmpty: "पहले लाइव यूज़र चुनें.",
+    ownId: "आप खुद को कॉल नहीं कर सकते.",
     endGroupFirst: "निजी कॉल शुरू करने से पहले समूह कॉल समाप्त करें.",
     endPrivateFirst: "समूह कॉल शुरू करने से पहले निजी कॉल समाप्त करें.",
-    calling: "{id} को कॉल कर रहे हैं…",
+    calling: "{name} को कॉल कर रहे हैं…",
     privateEnded: "निजी कॉल समाप्त.",
     invalidCode: "वैध 6-अक्षर का रूम कोड दर्ज करें.",
     stillConnecting: "अभी कनेक्ट हो रहा है — कृपया पुनः प्रयास करें.",
@@ -418,6 +463,13 @@ function applyI18n() {
   if (statusEl && statusEl.dataset.currentKey) {
     statusEl.textContent = t(statusEl.dataset.currentKey, JSON.parse(statusEl.dataset.currentVars || "{}"));
   }
+  const friendLobbyStatus = $("friendLobbyStatus");
+  if (friendLobbyStatus && friendLobbyStatus.dataset.currentKey) {
+    friendLobbyStatus.textContent = t(friendLobbyStatus.dataset.currentKey, JSON.parse(friendLobbyStatus.dataset.currentVars || "{}"));
+  }
+  updateMyUsernameDisplay();
+  updateSelectedFriendUI();
+  updateFriendList();
   // Update lang button label
   const langBtn = $("langBtn");
   if (langBtn) {
@@ -526,25 +578,39 @@ function loadProfile() {
   if (!myProfile.avatar) myProfile.avatar = "👤";
 }
 function saveProfile() { localStorage.setItem("peerProfile", JSON.stringify(myProfile)); }
+function displayNameFor(peerId) {
+  return peerId === peer?.id ? myProfile.name : profileFor(peerId).name;
+}
+function updateMyUsernameDisplay() {
+  if (myIdEl) myIdEl.textContent = myProfile.name || t("you");
+}
 
 function sendProfileToConnection(connection) {
   if (!connection?.open) return;
   try { connection.send({ type: "profile", profile: myProfile }); } catch (_) {}
 }
 function broadcastProfile() {
-  if (!room) return;
-  if (room.creator) {
-    room.members.forEach((c) => sendProfileToConnection(c));
-  } else if (room.hostConnection?.open) {
-    room.hostConnection.send({ type: "profile-relay", profile: myProfile });
+  if (room) {
+    if (room.creator) {
+      room.members.forEach((c) => sendProfileToConnection(c));
+    } else if (room.hostConnection?.open) {
+      room.hostConnection.send({ type: "profile-relay", profile: myProfile });
+    }
   }
+  broadcastFriendProfile();
 }
 function handleProfileUpdate(peerId, profile) {
   const clean = sanitizeProfile(profile);
   if (!clean || !peerId) return;
   remoteProfiles.set(peerId, clean);
+  if (friendLobbyRoster.has(peerId)) friendLobbyRoster.set(peerId, clean);
   updateParticipantsList();
   updateTileLabels();
+  updateFriendList();
+  updateSelectedFriendUI();
+  if (privateConnection?.peer === peerId && $("privateChatStatus")) {
+    $("privateChatStatus").textContent = t("privateChatWith", { name: clean.name });
+  }
 }
 
 function updateParticipantsList() {
@@ -565,6 +631,285 @@ function updateParticipantsList() {
     container.appendChild(pill);
   });
 }
+
+/* -------------------------------------------------------------------------- */
+/* Live friend list                                                           */
+/* -------------------------------------------------------------------------- */
+function friendRosterArray() {
+  if (peer?.id && !friendLobbyRoster.has(peer.id)) friendLobbyRoster.set(peer.id, myProfile);
+  return [...friendLobbyRoster.entries()].filter(([, profile]) => sanitizeProfile(profile));
+}
+function collectFriendRoster() {
+  return friendRosterArray().map(([peerId, profile]) => ({ peerId, profile }));
+}
+function setFriendLobbyStatus(key, vars) {
+  const el = $("friendLobbyStatus");
+  if (!el) return;
+  el.dataset.currentKey = key || "";
+  el.dataset.currentVars = vars ? JSON.stringify(vars) : "";
+  el.textContent = key ? t(key, vars) : "";
+}
+function updateSelectedFriendUI() {
+  const selected = $("selectedFriend");
+  const hiddenInput = $("peerId");
+  const videoBtn = $("callBtn"), audioBtn = $("audioCallBtn");
+  if (!selected || !hiddenInput) return;
+  const valid = selectedFriendId && selectedFriendId !== peer?.id;
+  hiddenInput.value = valid ? selectedFriendId : "";
+  selected.innerHTML = "";
+  if (valid) {
+    const prof = profileFor(selectedFriendId);
+    selected.append(buildAvatarEl(prof), document.createTextNode(prof.name));
+  } else {
+    selected.textContent = t("selectFriendPrompt");
+  }
+  if (videoBtn) videoBtn.disabled = !valid;
+  if (audioBtn) audioBtn.disabled = !valid;
+}
+function selectFriend(peerId) {
+  if (!peerId || peerId === peer?.id) return;
+  selectedFriendId = peerId;
+  updateSelectedFriendUI();
+  updateFriendList();
+  const prof = profileFor(peerId);
+  const chatStatus = $("privateChatStatus");
+  if (chatStatus) chatStatus.textContent = t("privateChatWith", { name: prof.name });
+}
+async function startPrivateCallTo(peerId, video) {
+  selectFriend(peerId);
+  await startPrivateCall(video);
+}
+function updateFriendList() {
+  const list = $("friendList");
+  if (!list) return;
+  list.innerHTML = "";
+  if (peer?.id) friendLobbyRoster.set(peer.id, myProfile);
+  const entries = friendRosterArray().sort(([a], [b]) => (a === peer?.id ? -1 : b === peer?.id ? 1 : displayNameFor(a).localeCompare(displayNameFor(b))));
+  const callable = entries.filter(([id]) => id !== peer?.id);
+  const n = entries.length;
+  if (friendLobbyState === "host" || friendLobbyState === "member") setFriendLobbyStatus("friendLobbyReady", { n, s: n === 1 ? "" : "s" });
+  if (!callable.length && entries.length <= 1) {
+    const empty = document.createElement("p");
+    empty.className = "friend-empty";
+    empty.textContent = t("noOnlineFriends");
+    list.append(empty);
+  }
+  entries.forEach(([id, prof]) => {
+    const isMe = id === peer?.id;
+    const card = document.createElement("article");
+    card.className = "friend-card" + (isMe ? " you" : "") + (id === selectedFriendId ? " selected" : "");
+    const avatar = buildAvatarEl(prof);
+    const main = document.createElement("div");
+    main.className = "friend-main";
+    const name = document.createElement("div");
+    name.className = "friend-name";
+    name.textContent = isMe ? `${prof.name} (${t("you")})` : prof.name;
+    const meta = document.createElement("div");
+    meta.className = "friend-meta";
+    meta.textContent = t("liveNow");
+    main.append(name, meta);
+    const actions = document.createElement("div");
+    actions.className = "friend-actions";
+    if (isMe) {
+      const you = document.createElement("span");
+      you.className = "muted";
+      you.textContent = t("you");
+      actions.append(you);
+    } else {
+      const selectBtn = document.createElement("button");
+      selectBtn.type = "button";
+      selectBtn.className = "btn small";
+      selectBtn.textContent = t("select");
+      selectBtn.onclick = () => selectFriend(id);
+      const videoBtn = document.createElement("button");
+      videoBtn.type = "button";
+      videoBtn.className = "btn small primary";
+      videoBtn.textContent = t("videoCall");
+      videoBtn.onclick = () => startPrivateCallTo(id, true);
+      const audioBtn = document.createElement("button");
+      audioBtn.type = "button";
+      audioBtn.className = "btn small";
+      audioBtn.textContent = t("audioCall");
+      audioBtn.onclick = () => startPrivateCallTo(id, false);
+      actions.append(selectBtn, videoBtn, audioBtn);
+      card.onclick = (event) => { if (!event.target.closest("button")) selectFriend(id); };
+    }
+    card.append(avatar, main, actions);
+    list.append(card);
+  });
+}
+function broadcastFriendRoster() {
+  if (friendLobbyState !== "host") return;
+  const payload = { type: "friend-roster", roster: collectFriendRoster() };
+  friendLobbyMembers.forEach((connection) => { if (connection.open) connection.send(payload); });
+  updateFriendList();
+}
+function applyFriendRoster(roster) {
+  friendLobbyRoster.clear();
+  if (peer?.id) friendLobbyRoster.set(peer.id, myProfile);
+  (Array.isArray(roster) ? roster : []).forEach((item) => {
+    const peerId = safeText(item?.peerId).slice(0, 120);
+    const profile = sanitizeProfile(item?.profile);
+    if (peerId && profile) {
+      friendLobbyRoster.set(peerId, profile);
+      if (peerId !== peer?.id) remoteProfiles.set(peerId, profile);
+    }
+  });
+  updateFriendList();
+  updateSelectedFriendUI();
+}
+function handleFriendLobbyData(data, connection) {
+  if (!data || typeof data.type !== "string") return;
+  if (friendLobbyState === "host") {
+    if (data.type === "friend-join" && connection?.peer) {
+      const profile = sanitizeProfile(data.profile) || { name: t("participant"), avatar: "👥", color: "#6b7280", useInitials: false };
+      friendLobbyMembers.set(connection.peer, connection);
+      friendLobbyRoster.set(connection.peer, profile);
+      remoteProfiles.set(connection.peer, profile);
+      connection.send({ type: "friend-roster", roster: collectFriendRoster() });
+      broadcastFriendRoster();
+    }
+    if (data.type === "friend-profile" && connection?.peer) {
+      const profile = sanitizeProfile(data.profile);
+      if (profile) {
+        friendLobbyRoster.set(connection.peer, profile);
+        remoteProfiles.set(connection.peer, profile);
+        broadcastFriendRoster();
+      }
+    }
+    if (data.type === "friend-leave" && connection?.peer) removeFriendLobbyMember(connection.peer);
+    return;
+  }
+  if (data.type === "friend-roster") applyFriendRoster(data.roster);
+}
+function removeFriendLobbyMember(peerId) {
+  if (!peerId) return;
+  friendLobbyMembers.delete(peerId);
+  friendLobbyRoster.delete(peerId);
+  remoteProfiles.delete(peerId);
+  if (selectedFriendId === peerId && !privateCall) selectedFriendId = "";
+  broadcastFriendRoster();
+  updateSelectedFriendUI();
+}
+function wireFriendLobbyMember(connection) {
+  connection.on("data", (data) => handleFriendLobbyData(data, connection));
+  connection.on("close", () => { if (friendLobbyState === "host") removeFriendLobbyMember(connection.peer); });
+  connection.on("error", () => { if (friendLobbyState === "host") removeFriendLobbyMember(connection.peer); });
+}
+function resetFriendLobbyConnection() {
+  friendLobbyState = "idle";
+  if (friendLobbyRetryTimer) { clearTimeout(friendLobbyRetryTimer); friendLobbyRetryTimer = null; }
+  const oldConnection = friendLobbyHostConnection;
+  const oldHostPeer = friendLobbyHostPeer;
+  friendLobbyHostConnection = null;
+  friendLobbyHostPeer = null;
+  if (oldConnection) {
+    try { oldConnection.close(); } catch (_) {}
+  }
+  if (oldHostPeer) {
+    try { oldHostPeer.destroy(); } catch (_) {}
+  }
+  friendLobbyMembers.clear();
+  friendLobbyRoster.clear();
+  if (peer?.id) friendLobbyRoster.set(peer.id, myProfile);
+}
+function scheduleFriendLobbyReconnect(delay) {
+  if (friendLobbyRetryTimer) clearTimeout(friendLobbyRetryTimer);
+  friendLobbyRetryTimer = setTimeout(() => {
+    friendLobbyRetryTimer = null;
+    ensureFriendLobby(true);
+  }, delay || 2000);
+}
+function connectFriendLobbyAsMember() {
+  if (!peer?.open || friendLobbyState === "member" || friendLobbyState === "connecting-member") return;
+  friendLobbyState = "connecting-member";
+  setFriendLobbyStatus("friendLobbyConnecting");
+  updateFriendList();
+  const connection = peer.connect(FRIEND_LOBBY_ID, { reliable: true });
+  friendLobbyHostConnection = connection;
+  const failTimer = setTimeout(() => {
+    if (friendLobbyHostConnection === connection && !connection.open) {
+      try { connection.close(); } catch (_) {}
+      friendLobbyState = "idle";
+      setFriendLobbyStatus("friendLobbyOffline");
+      scheduleFriendLobbyReconnect(2200);
+    }
+  }, 6000);
+  connection.on("open", () => {
+    clearTimeout(failTimer);
+    friendLobbyState = "member";
+    friendLobbyRoster.set(peer.id, myProfile);
+    connection.send({ type: "friend-join", profile: myProfile });
+    updateFriendList();
+  });
+  connection.on("data", (data) => handleFriendLobbyData(data, connection));
+  connection.on("close", () => {
+    clearTimeout(failTimer);
+    if (friendLobbyHostConnection === connection) {
+      friendLobbyHostConnection = null;
+      friendLobbyState = "idle";
+      setFriendLobbyStatus("friendLobbyOffline");
+      scheduleFriendLobbyReconnect(1800);
+    }
+  });
+  connection.on("error", () => {
+    clearTimeout(failTimer);
+    if (friendLobbyHostConnection === connection) {
+      friendLobbyHostConnection = null;
+      friendLobbyState = "idle";
+      setFriendLobbyStatus("friendLobbyOffline");
+      scheduleFriendLobbyReconnect(2500);
+    }
+  });
+}
+function startFriendLobbyHost() {
+  if (!peer?.open || friendLobbyHostPeer || friendLobbyState === "starting-host" || friendLobbyState === "host") return;
+  friendLobbyState = "starting-host";
+  setFriendLobbyStatus("friendLobbyConnecting");
+  const host = new Peer(FRIEND_LOBBY_ID);
+  friendLobbyHostPeer = host;
+  host.on("open", () => {
+    friendLobbyState = "host";
+    friendLobbyRoster.clear();
+    friendLobbyRoster.set(peer.id, myProfile);
+    updateFriendList();
+  });
+  host.on("connection", (connection) => wireFriendLobbyMember(connection));
+  host.on("close", () => {
+    if (friendLobbyHostPeer === host) {
+      friendLobbyHostPeer = null;
+      friendLobbyState = "idle";
+      setFriendLobbyStatus("friendLobbyOffline");
+      scheduleFriendLobbyReconnect(2000);
+    }
+  });
+  host.on("error", (error) => {
+    console.warn("Friend lobby host error:", error);
+    if (friendLobbyHostPeer === host) friendLobbyHostPeer = null;
+    try { host.destroy(); } catch (_) {}
+    friendLobbyState = "idle";
+    connectFriendLobbyAsMember();
+  });
+}
+function ensureFriendLobby(force) {
+  if (!peer?.open) { setFriendLobbyStatus("friendLobbyConnecting"); return; }
+  if (force) resetFriendLobbyConnection();
+  if (friendLobbyState === "host" || friendLobbyState === "member" || friendLobbyState === "starting-host" || friendLobbyState === "connecting-member") {
+    updateFriendList();
+    return;
+  }
+  friendLobbyRoster.set(peer.id, myProfile);
+  startFriendLobbyHost();
+}
+function broadcastFriendProfile() {
+  if (!peer?.id) return;
+  friendLobbyRoster.set(peer.id, myProfile);
+  updateMyUsernameDisplay();
+  if (friendLobbyState === "host") broadcastFriendRoster();
+  else if (friendLobbyHostConnection?.open) friendLobbyHostConnection.send({ type: "friend-profile", profile: myProfile });
+  updateFriendList();
+}
+function refreshFriendLobby() { ensureFriendLobby(true); }
 
 /* -------------------------------------------------------------------------- */
 /* Core helpers                                                               */
@@ -891,7 +1236,7 @@ async function sendFile({ file, containerId, mine, senderId, sendFn, getConnecti
 function wirePrivateConnection(connection) {
   connection.on("open", () => {
     privateConnection = connection;
-    $("privateChatStatus").textContent = t("you") + " → " + connection.peer;
+    $("privateChatStatus").textContent = t("privateChatWith", { name: displayNameFor(connection.peer) });
     // Send profile on connect
     sendProfileToConnection(connection);
   });
@@ -950,7 +1295,7 @@ async function startPrivateCall(video) {
   const stream = await getMedia(video); if (!stream) return;
   addPrivateTile(peer.id, stream, true);
   privateChatConnection(remoteId);
-  status("calling", { id: remoteId });
+  status("calling", { name: displayNameFor(remoteId) });
   wirePrivateCall(peer.call(remoteId, stream, { metadata: { kind: "private", video, profile: myProfile } }));
 }
 async function answerPrivate() {
@@ -1453,10 +1798,11 @@ function endGroupCall(notify) {
 /* -------------------------------------------------------------------------- */
 function initPeer() {
   peer = new Peer();
-  peer.on("open", (id) => {
-    myIdEl.textContent = id;
+  peer.on("open", () => {
+    updateMyUsernameDisplay();
     status("ready");
     reconnectAttempts = 0;
+    ensureFriendLobby();
   });
   peer.on("error", (error) => { console.error(error); status("connectionError", { type: error.type || "unknown" }); });
   peer.on("disconnected", () => {
@@ -1519,10 +1865,11 @@ async function answerIncomingGroup() {
 /* -------------------------------------------------------------------------- */
 /* Static UI wiring                                                           */
 /* -------------------------------------------------------------------------- */
-$("friendChoice").onclick = () => view("friendView");
+$("friendChoice").onclick = () => { view("friendView"); ensureFriendLobby(); updateFriendList(); updateSelectedFriendUI(); };
 $("roomChoice").onclick = () => view("roomView");
 document.querySelectorAll(".back-btn").forEach((button) => button.onclick = () => { if (room) leaveRoom(false); view("homeView"); });
-$("copyBtn").onclick = () => copyText(peer?.id || "", $("copyBtn"));
+$("copyBtn").onclick = () => copyText(myProfile.name || "", $("copyBtn"));
+$("refreshFriendsBtn").onclick = refreshFriendLobby;
 $("callBtn").onclick = () => startPrivateCall(true);
 $("audioCallBtn").onclick = () => startPrivateCall(false);
 $("answerPrivateBtn").onclick = answerPrivate;
@@ -1571,7 +1918,13 @@ $("roomChatForm").onsubmit = (event) => {
 $("clearRoomChat").onclick = () => clearMessages("roomMessages");
 $("modalAnswerBtn").onclick = answerIncomingGroup;
 $("modalDeclineBtn").onclick = closePendingGroupCalls;
-window.addEventListener("beforeunload", () => { if (room?.creator) room.hostPeer?.destroy(); if (screenStream) screenStream.getTracks().forEach((t) => t.stop()); if (localStream) localStream.getTracks().forEach((t) => t.stop()); });
+window.addEventListener("beforeunload", () => {
+  try { if (friendLobbyHostConnection?.open) friendLobbyHostConnection.send({ type: "friend-leave" }); } catch (_) {}
+  if (friendLobbyHostPeer) friendLobbyHostPeer.destroy();
+  if (room?.creator) room.hostPeer?.destroy();
+  if (screenStream) screenStream.getTracks().forEach((t) => t.stop());
+  if (localStream) localStream.getTracks().forEach((t) => t.stop());
+});
 
 async function handlePrivateFile(input) {
   const file = input.files && input.files[0]; if (!file) return;
@@ -1673,6 +2026,7 @@ function saveProfileFromForm() {
   myProfile.useInitials = useInitials;
   saveProfile();
   hide("profileModal");
+  updateMyUsernameDisplay();
   updateParticipantsList();
   refreshLocalTiles();
   updateTileLabels();

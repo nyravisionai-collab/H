@@ -489,6 +489,73 @@ body[data-theme="light"] .tile video { background: #e7ecf7; }
   background: color-mix(in srgb, var(--primary) 15%, var(--card));
 }
 
+.username-id {
+  max-width: 260px;
+  font-family: inherit;
+  font-weight: 800;
+}
+.selected-friend {
+  flex: 1 1 180px;
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--input-bg);
+}
+.live-friends-panel { gap: 12px; }
+.friend-list {
+  display: grid;
+  gap: 8px;
+}
+.friend-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--card-strong) 65%, transparent);
+}
+.friend-card.selected {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 16%, var(--card));
+}
+.friend-card.you { opacity: 0.78; }
+.friend-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+.friend-name {
+  overflow: hidden;
+  color: var(--text);
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.friend-meta {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+.friend-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.friend-empty {
+  margin: 0;
+  padding: 14px;
+  border: 1px dashed var(--border);
+  border-radius: 13px;
+  color: var(--muted);
+  text-align: center;
+}
+
 /* Avatars */
 .avatar {
   width: 28px;
@@ -689,6 +756,10 @@ body[data-theme="light"] .file-status.file-error { color: var(--danger); }
   .chat-form .btn.primary { order: 2; flex: 1 1 auto; }
   .messages { height: 300px; }
   .message { max-width: 92%; }
+  .friend-card { align-items: flex-start; flex-wrap: wrap; }
+  .friend-main { flex: 1 1 calc(100% - 48px); }
+  .friend-actions { width: 100%; }
+  .friend-actions .btn { flex: 1 1 auto; }
   .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   .tile { aspect-ratio: 4 / 5; min-height: 180px; }
   .audio-avatar { width: 56px; height: 56px; font-size: 1.5rem; }

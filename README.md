@@ -7,9 +7,9 @@ sharing without an application backend.
 ## Use it
 
 1. Open the site. It starts at a choice between **Call a Friend** and **Join a Room**.
-2. For a private call, copy your Peer ID, share it with a friend, enter their ID,
-   and choose **Video Call** or **Audio Call**. Private text chat works before,
-   during, and after a call.
+2. For a private call, choose **Call a Friend** to see live users by their
+   profile username. Select any live user and choose **Video Call** or
+   **Audio Call**. Private text chat works before, during, and after a call.
 3. For a group, choose **Create a Room** and share the generated six-character
    code, or enter a shared code to join an existing room.
 4. In a room, use **Start Video Call** or **Start Audio Call**. Other members can
@@ -33,7 +33,12 @@ Incoming file metadata and chunk sizes are validated, transfers time out if they
 remain incomplete, and SHA-256 hashes are verified when the browser supports the
 Web Crypto API.
 
-## How rooms work
+## How rooms and live friend discovery work
+
+The live friend list uses a temporary PeerJS lobby so online browsers can share
+only their PeerJS connection ID and profile username with each other; the UI
+shows usernames and keeps the IDs hidden. One online browser hosts that lobby,
+and others reconnect automatically if it changes.
 
 The room creator reserves a temporary PeerJS ID derived from the room code and
 acts only as the membership coordinator. The creator relays membership, call
