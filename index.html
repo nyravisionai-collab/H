@@ -29,7 +29,7 @@
     <section id="homeView" class="chooser" aria-label="Choose how to connect">
       <button id="friendChoice" class="choice" type="button">
         <strong data-i18n="callFriendTitle">Call a Friend</strong>
-        <span data-i18n="callFriendDesc">Share your Peer ID for one-to-one audio, video, chat, and files.</span>
+        <span data-i18n="callFriendDesc">See live users by username and start a one-to-one audio, video, chat, or file session.</span>
       </button>
       <button id="roomChoice" class="choice" type="button">
         <strong data-i18n="joinRoomTitle">Join a Room</strong>
@@ -47,15 +47,16 @@
 
       <div class="panel">
         <div class="row wrap">
-          <span class="label" data-i18n="yourId">Your ID</span>
-          <code id="myId" class="id">—</code>
+          <span class="label" data-i18n="yourUsername">Your username</span>
+          <code id="myId" class="id username-id">—</code>
           <button id="copyBtn" class="btn small" type="button" data-i18n="copy">Copy</button>
         </div>
-        <div class="row wrap">
-          <label for="peerId" class="sr-only">Friend's Peer ID</label>
-          <input id="peerId" class="input" data-i18n-placeholder="enterFriendId" placeholder="Enter friend's ID" autocomplete="off" spellcheck="false">
-          <button id="callBtn" class="btn primary" type="button" data-i18n="videoCall">Video Call</button>
-          <button id="audioCallBtn" class="btn" type="button" data-i18n="audioCall">Audio Call</button>
+        <div class="row wrap selected-friend-row">
+          <span class="label" data-i18n="selectedFriend">Selected friend</span>
+          <div id="selectedFriend" class="selected-friend muted" data-i18n="selectFriendPrompt">Choose a live user below.</div>
+          <input id="peerId" type="hidden" autocomplete="off" spellcheck="false">
+          <button id="callBtn" class="btn primary" type="button" data-i18n="videoCall" disabled>Video Call</button>
+          <button id="audioCallBtn" class="btn" type="button" data-i18n="audioCall" disabled>Audio Call</button>
         </div>
         <div id="privateIncoming" class="row hidden">
           <span class="label" data-i18n="incomingPrivate">Incoming private call</span>
@@ -69,11 +70,22 @@
         <button id="privateHangupBtn" class="btn danger hidden" type="button" data-i18n="hangUp">Hang Up</button>
       </div>
 
+      <section class="panel live-friends-panel" aria-labelledby="onlineFriendsTitle">
+        <div class="chat-heading">
+          <div>
+            <h3 id="onlineFriendsTitle" data-i18n="onlineFriends">Live users</h3>
+            <p id="friendLobbyStatus" class="muted" data-i18n="friendLobbyConnecting">Finding live users…</p>
+          </div>
+          <button id="refreshFriendsBtn" class="btn small" type="button" data-i18n="refresh">Refresh</button>
+        </div>
+        <div id="friendList" class="friend-list" aria-live="polite"></div>
+      </section>
+
       <section class="panel chat-panel" aria-labelledby="privateChatTitle">
         <div class="chat-heading">
           <div>
             <h3 id="privateChatTitle" data-i18n="privateChat">Private chat</h3>
-            <p id="privateChatStatus" class="muted" data-i18n="enterFriendIdStart">Enter a friend's ID to start chatting.</p>
+            <p id="privateChatStatus" class="muted" data-i18n="enterFriendIdStart">Select a live user to start chatting.</p>
           </div>
           <button id="clearPrivateChat" class="btn small" type="button" data-i18n="clear">Clear</button>
         </div>
