@@ -1,0 +1,27 @@
+{
+  "name": "peer-call-pwa",
+  "version": "3.0.0",
+  "private": true,
+  "description": "Installable, backwards-compatible Peer Call progressive web app",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "check": "npm run build && node scripts/validate.mjs",
+    "serve": "npx http-server . -a 0.0.0.0 -p 8080 -c-1"
+  },
+  "browserslist": [
+    "> 0.5%",
+    "last 2 versions",
+    "Firefox ESR",
+    "iOS >= 10.3",
+    "Safari >= 10.1",
+    "Android >= 5",
+    "IE 11"
+  ],
+  "devDependencies": {
+    "@babel/core": "^7.28.0",
+    "@babel/preset-env": "^7.28.0",
+    "core-js-bundle": "^3.45.0",
+    "css-vars-ponyfill": "^2.4.9",
+    "peerjs": "1.5.5"
+  }
+}
