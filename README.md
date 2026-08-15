@@ -1,42 +1,47 @@
-# PeerCall
+# Peer Call
 
-PeerCall is a static, installable peer-to-peer dating and communication web app. Profiles and photos stay in the browser; online discovery, chat, calls, and file transfer use PeerJS/WebRTC without an application backend.
+A static, browser-based PeerJS/WebRTC calling app. It supports private
+one-to-one calls, temporary group rooms, text chat, and peer-to-peer file
+sharing without an application backend.
 
-## Install the app
+## Use it
 
-The site is a Progressive Web App (PWA) and must be hosted over HTTPS (or `localhost`).
+1. Open the site. It starts at a choice between **Call a Friend** and **Join a Room**.
+2. For a private call, copy your Peer ID, share it with a friend, enter their ID,
+   and choose **Video Call** or **Audio Call**. Private text chat works before,
+   during, and after a call.
+3. For a group, choose **Create a Room** and share the generated six-character
+   code, or enter a shared code to join an existing room.
+4. In a room, use **Start Video Call** or **Start Audio Call**. Other members can
+   answer the invitation; people joining an active room are invited automatically.
+   Use **End Call for Everyone** to stop the current group call, or **Leave Room**
+   to leave the room.
+5. During calls, use the call controls to mute/unmute your microphone or turn
+   your camera on/off. Audio-only calls display an audio tile instead of a blank
+   video panel. To avoid accidentally sharing the wrong media stream, the app
+   keeps you in one active call at a time.
 
-- **Chrome / Edge / Android:** use the in-app **Install PeerCall** button or the browser's **Install app** option.
-- **iPhone / iPad:** open the Share menu, choose **Add to Home Screen**, then tap **Add**.
-- **Safari / Firefox / other browsers:** use **Add to Home Screen**, **Install**, or **Create shortcut** in the browser menu when available.
+Camera and microphone permission is requested only when someone starts or
+answers a call—not when the page opens. Chat messages are rendered as text, not
+HTML, so messages cannot inject markup into the page.
 
-The web app manifest supplies correctly-sized regular and maskable icons. The service worker stores the full local app shell, so an installed copy opens offline. Discovery, chat, and calls still require a network connection.
+## File sharing
 
-## Browser compatibility
+Files are sent directly over PeerJS data channels in small chunks with progress
+updates and backpressure to avoid overfilling the browser data channel buffer.
+Incoming file metadata and chunk sizes are validated, transfers time out if they
+remain incomplete, and SHA-256 hashes are verified when the browser supports the
+Web Crypto API.
 
-The production scripts are transpiled to ES5 and load local polyfills for Promise, Map/Set, modern language APIs, CSS custom properties, older DOM methods, prefixed IndexedDB, and legacy `getUserMedia`. CSS includes a non-Grid fallback layout. If IndexedDB is unavailable, the app falls back to local storage for photos.
+## How rooms work
 
-Profile, theme, language, and locally saved data continue to work in older browsers. Real-time discovery and calling require WebRTC; browsers without WebRTC show a non-blocking compatibility notice instead of failing to load. For full call support, use a reasonably recent Chrome, Edge, Firefox, or Safari.
+The room creator reserves a temporary PeerJS ID derived from the room code and
+acts only as the membership coordinator. The creator relays membership, call
+state, and chat/file notifications; browser-to-browser WebRTC connections carry
+media. Consequently, rooms remain available only while the creator has the page
+open. This is intentionally a lightweight temporary-room design, not a durable
+or moderated conferencing service.
 
-## Development
-
-Requirements: Node.js 18 or newer.
-
-```bash
-npm install
-npm run build
-npm run check
-npm run serve
-```
-
-Edit `js/app.source.js`, not the generated `js/app.js`. `npm run build`:
-
-1. transpiles the app to an IE 11 / older Safari compatible ES5 build;
-2. transpiles and vendors PeerJS locally;
-3. copies the local polyfill and CSS-variable compatibility bundles.
-
-Commit both source and generated browser assets because deployment is static and does not require a server-side build step.
-
-## Deployment and permissions
-
-Serve the repository root as static files over HTTPS. Camera and microphone access is requested only when a user starts or answers a call. PeerJS signaling and WebRTC connectivity require network access; the PWA's offline mode is limited to the cached interface and locally stored profile data.
+The app uses the public PeerJS signaling service and must be served from a
+secure context (`https://`) or `localhost`; GitHub Pages is suitable. PeerJS is
+loaded from the PeerJS CDN, so clients also need network access to that service.
