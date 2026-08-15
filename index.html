@@ -2,20 +2,42 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="description" content="Peer-to-peer dating app — discover, match, chat, and call. No sign-up.">
   <meta name="theme-color" content="#5b8cff">
+  <meta name="color-scheme" content="dark light">
+  <meta name="application-name" content="PeerCall">
+  <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="PeerCall">
+  <meta name="msapplication-TileColor" content="#0b1020">
+  <meta name="msapplication-TileImage" content="icons/icon-192.png">
   <link rel="manifest" href="manifest.json">
-  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">
   <title data-i18n="appTitle">Peer Call</title>
   <link rel="stylesheet" href="css/style.css">
-  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 </head>
 <body data-theme="dark">
   <main class="app">
+    <aside id="appNotice" class="app-notice hidden" role="status" aria-live="polite">
+      <span class="notice-icon" aria-hidden="true">ℹ️</span>
+      <p id="appNoticeText"></p>
+      <button id="dismissNoticeBtn" class="notice-close" type="button" data-i18n="dismiss" aria-label="Dismiss">Dismiss</button>
+    </aside>
+
+    <aside id="installBanner" class="install-banner hidden" aria-labelledby="installBannerTitle">
+      <img src="icons/icon-192.png" alt="" width="48" height="48">
+      <div class="install-banner-copy">
+        <strong id="installBannerTitle" data-i18n="installTitle">Install PeerCall</strong>
+        <span data-i18n="installReady">Install PeerCall for quick, full-screen access.</span>
+      </div>
+      <div class="install-banner-actions">
+        <button id="installBannerBtn" class="btn primary small" type="button" data-i18n="installNow">Install</button>
+        <button id="installLaterBtn" class="btn ghost small" type="button" data-i18n="installLater">Not now</button>
+      </div>
+    </aside>
 
     <!-- ===== SETUP VIEW ===== -->
     <section id="setupView" class="view">
@@ -151,6 +173,7 @@
         </div>
       </div>
       <div class="profile-actions">
+        <button id="installProfileBtn" class="btn primary" type="button" data-i18n="installTitle">Install PeerCall</button>
         <button id="themeBtn" class="btn ghost" type="button" data-i18n="toggleTheme">🌙 Theme</button>
         <button id="langBtn" class="btn ghost" type="button" data-i18n="language">🌐 Language</button>
         <button id="clearDataBtn" class="btn danger" type="button" data-i18n="clearAllData">Clear All Data</button>
@@ -245,14 +268,29 @@
       </div>
     </div>
 
+    <!-- ===== INSTALL HELP MODAL ===== -->
+    <div id="installModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="installModalTitle">
+      <div class="panel install-panel">
+        <img src="icons/icon-192.png" alt="" class="install-modal-icon" width="80" height="80">
+        <h2 id="installModalTitle" data-i18n="installInstructions">Add PeerCall to your home screen</h2>
+        <p id="installInstructionsText" class="install-instructions"></p>
+        <div class="row end-row"><button id="closeInstallBtn" class="btn primary" type="button" data-i18n="close">Close</button></div>
+      </div>
+    </div>
+
     <!-- ===== BOTTOM NAV ===== -->
-    <nav id="bottomNav" class="bottom-nav hidden">
+    <nav id="bottomNav" class="bottom-nav hidden" aria-label="Primary navigation">
       <button class="nav-btn active" data-view="discoverView" type="button"><span class="nav-icon">🔍</span><span class="nav-label" data-i18n="discover">Discover</span></button>
       <button class="nav-btn" data-view="matchesView" type="button"><span class="nav-icon">💝</span><span class="nav-label" data-i18n="matches">Matches</span></button>
       <button class="nav-btn" data-view="chatListView" type="button"><span class="nav-icon">💬</span><span class="nav-label" data-i18n="chats">Chats</span></button>
       <button class="nav-btn" data-view="profileView" type="button"><span class="nav-icon">👤</span><span class="nav-label" data-i18n="profile">Profile</span></button>
     </nav>
   </main>
+  <!-- Local dependencies keep the installed app shell available offline. -->
+  <script src="js/vendor/polyfills.min.js"></script>
+  <script src="js/vendor/css-vars-ponyfill.min.js"></script>
+  <script src="js/compat.js"></script>
+  <script src="js/vendor/peerjs.min.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>
